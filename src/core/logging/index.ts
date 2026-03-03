@@ -16,11 +16,11 @@ export interface LogEntry {
 export type LogSink = (entry: LogEntry) => void;
 
 let globalSink: LogSink = (entry) => {
-  const prefix = `[${entry.scope}] ${entry.event}`;
+  const prefix = `[cassandra:${entry.scope}] ${entry.event}`;
   const data = entry.data ? ` ${JSON.stringify(entry.data)}` : '';
   switch (entry.level) {
-    case 'debug': break; // silent in production
-    case 'info': break;  // silent in production
+    case 'debug': console.debug(`${prefix}${data}`); break;
+    case 'info': console.info(`${prefix}${data}`); break;
     case 'warn': console.warn(`${prefix}${data}`); break;
     case 'error': console.error(`${prefix}${data}`); break;
   }

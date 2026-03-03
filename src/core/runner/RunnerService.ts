@@ -303,6 +303,8 @@ export class RunnerService implements AgentService {
     let sawStreamText = false;
 
     const onEvent = (event: RunnerEvent) => {
+      log.debug('runner_event', { type: event.type, subtype: event.subtype, error: event.error, resolvers: this.queryResolvers.length });
+
       if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
         this.sdkSessionId = event.session_id;
         if (event.permissionMode && this.permissionModeSyncCallback) {
