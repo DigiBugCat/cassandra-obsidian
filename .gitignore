@@ -1,0 +1,45 @@
+# Build output
+main.js
+styles.css
+*.js.map
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+
+# Obsidian
+data.json
+
+# Dev scratch
+dev/
+
+# Claude / Codex
+.claude/
+.codex/

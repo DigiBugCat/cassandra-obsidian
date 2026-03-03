@@ -1,0 +1,10 @@
+{
+  "id": "cassandra-obsidian",
+  "name": "Cassandra",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.5",
+  "description": "AI chat interface for Obsidian — runner-first, mobile-ready.",
+  "author": "DigiBugCat",
+  "authorUrl": "https://github.com/DigiBugCat",
+  "isDesktopOnly": false
+}
