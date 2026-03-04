@@ -252,13 +252,16 @@ export class RunnerService implements AgentService {
           model: settings.model,
           systemPrompt: settings.systemPrompt || undefined,
           thinking: (budgetConfig?.tokens ?? 0) > 0,
-          permissionMode: settings.permissionMode === 'yolo' ? 'bypassPermissions' : settings.permissionMode,
+          permissionMode: settings.permissionMode === 'yolo' ? 'bypassPermissions'
+            : settings.permissionMode === 'normal' ? 'default'
+            : settings.permissionMode,
           compactInstructions: settings.compactInstructions || undefined,
           allowedPaths: settings.enableVaultRestriction ? [vaultPath] : undefined,
           additionalDirectories: settings.persistentExternalContextPaths.length > 0
             ? settings.persistentExternalContextPaths : undefined,
         };
 
+        log.info('create_session_request', { workspace: req.workspace, model: req.model, permissionMode: req.permissionMode, thinking: req.thinking });
         const result = await this.client.createSession(req);
         this.runnerSessionId = result.session_id;
         log.info('session_created', { session_id: this.runnerSessionId });
