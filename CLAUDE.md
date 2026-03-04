@@ -99,53 +99,83 @@ btn.click();
 
 ## Current Status
 
-### Working
-- Plugin scaffold (loads in Obsidian, ribbon icon, command)
-- Runner connection (WebSocket + HTTP to claude-agent-runner)
-- Session creation, subscription, message sending
-- Minimal chat UI (header, messages, input, send button)
-- Event streaming pipeline (transformRunnerEvent → StreamEvent)
-- Text dedup (sawStreamText prevents duplicate assistant text)
-- Usage calculation (context = input + cache tokens)
-- Debug logging (all levels to console)
+### Working (verified in Obsidian via CLI)
+- Plugin loads, enables, ribbon icon + command
+- Runner connection: WS connect, session create via HTTP, subscribe via WS
+- Messages send and responses arrive (confirmed: "Hello there, how are you?")
+- Event pipeline: RunnerService → transformRunnerEvent → StreamEvent → CassandraView
+- Text dedup: `sawStreamText` skips duplicate assistant text when stream deltas present
+- Usage calculation: context = input + cache tokens (matches SDK path)
+- Debug logging: all levels to console via `createLogger()`
+- Permission mode mapping: Cassandra `'normal'` → SDK `'default'`
+- Hot-reload via `.hotreload` file + Obsidian CLI `plugin:reload`
 
-### Runner Issue
-The runner's SDK subprocess crashes with exit code 1 (infrastructure/API key issue in Docker container). This is a runner-side issue, not Cassandra. Claudian would have the same problem.
+### Known Issues
 
-### Next: Phase 3+ (see plan below)
+#### No token-level streaming (BLOCKER for good UX)
+Text arrives as complete chunks, not token-by-token. Root cause: the runner's V2 SDK
+`session.stream()` only yields complete `assistant` messages, NOT `stream_event` deltas.
+`includePartialMessages: true` is set but `stream_event` types never appear in the WS output.
+
+**Investigation so far:**
+- Runner serializer (`serialize.ts`) handles `stream_event` correctly
+- Runner iteration loop (`index.ts:394`) forwards all events from `session.stream()`
+- Orchestrator WS bridge forwards all events — no filtering
+- Confirmed: Cassandra debug logs show `system`, `assistant`, `rate_limit_event`, `result` only — zero `stream_event`
+- The V2 SDK's `.stream()` method may not yield `stream_event` types, or `--include-partial-messages` behaves differently in V2 vs V1
+
+**Next step:** Investigate inside the runner container whether V2 `session.stream()` with
+`includePartialMessages: true` actually yields `stream_event`. May need to use V2's
+`sendMessage()` return value instead of `.stream()`, or intercept the underlying process
+transport for token-level events. Check SDK 0.2.63 changelog for V2 streaming changes.
+
+#### Multiple WS connections on reload
+Each plugin reload creates new WS connections without fully cleaning up old ones. The
+RunnerClient reconnect logic creates stale subscriptions. Not critical but adds noise.
+
+### Runner Docker Image
+- Rebuilt 2026-03-03: CLI 2.1.63, SDK 0.2.63, patches compiled against 2.1.63
+- Dockerfile at `claude-agent-runner/packages/runner/Dockerfile` — CLI version pinned on lines 5 and 42
+- Patched CLI works end-to-end (confirmed via HTTP API: 3-turn conversation with context retention)
+- Runner WS path works for message send/receive, just no token streaming
 
 ## Migration Plan
 
 Migrating from Claudian (frozen). Cherry-picking clean modules, rewriting entangled ones.
 
-### Phase 3: Storage + Sessions
+### Phase 3: Token Streaming
+- Fix runner to emit `stream_event` deltas via V2 SDK
+- Or: intercept process transport for raw API stream events
+- Cassandra already has `sawStreamText` dedup — just needs the events
+
+### Phase 4: Storage + Sessions
 - VaultFileAdapter (Obsidian API, mobile-safe)
 - SessionStorage (JSONL metadata)
 - SettingsStorage + Settings tab
 - Conversation persistence across restarts
 
-### Phase 4: Chat UI Enhancement
+### Phase 5: Chat UI Enhancement
 - Renderers: MessageRenderer, ToolCallRenderer, ThinkingBlockRenderer, DiffRenderer
 - Controllers: ConversationController, StreamController, InputController
 - CSS: port from Claudian with `cassandra-` prefix
 
-### Phase 5: Thread Tree Tabs
+### Phase 6: Thread Tree Tabs
 - TabManager scoped to active conversation's thread tree
 - Main thread + live subagent/fork tabs
 - Threads sidebar (all conversations, expandable tree)
 
-### Phase 6: Features
+### Phase 7: Features
 - @-mentions + slash commands
 - Fork/rewind
 - Approval UI (permission modal)
 - File context
 - Thinking blocks
 
-### Phase 7: SDK Fallback (desktop only)
+### Phase 8: SDK Fallback (desktop only)
 - SDKAgentService (quarantined, gated behind Platform.isMobile)
 - SecurityHooks, HookExecutor (desktop-only)
 
-### Phase 8: Polish + Mobile
+### Phase 9: Polish + Mobile
 - Logger: file sink on desktop, console on mobile
 - Docker auto-start (desktop guard)
 - Remove all `claudian` references
