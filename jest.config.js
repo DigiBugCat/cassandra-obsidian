@@ -18,7 +18,9 @@ module.exports = {
     {
       ...baseConfig,
       displayName: 'unit',
+      testEnvironment: 'jsdom',
       testMatch: ['<rootDir>/tests/unit/**/*.test.ts'],
+      setupFiles: ['<rootDir>/tests/setup/dom-polyfills.ts'],
     },
     {
       ...baseConfig,
