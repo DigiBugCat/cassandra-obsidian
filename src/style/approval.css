@@ -1,0 +1,104 @@
+/* Approval modal */
+.cassandra-approval-modal {
+  max-width: 480px;
+}
+
+.cassandra-approval-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cassandra-approval-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-warning);
+}
+
+.cassandra-approval-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cassandra-approval-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cassandra-approval-tool {
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-monospace);
+  color: var(--interactive-accent);
+  margin-bottom: 8px;
+}
+
+.cassandra-approval-summary {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+
+.cassandra-approval-details {
+  margin-bottom: 12px;
+}
+
+.cassandra-approval-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cassandra-approval-input-pre {
+  font-size: 11px;
+  font-family: var(--font-monospace);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.cassandra-approval-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cassandra-approval-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cassandra-approval-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-approval-allow {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.cassandra-approval-allow:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.cassandra-approval-always {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cassandra-approval-deny {
+  color: var(--text-muted);
+}

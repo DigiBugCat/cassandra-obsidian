@@ -13,6 +13,7 @@ import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
 import type { CassandraSettings, ConversationMeta, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
+import { ApprovalModal } from '../../shared/ApprovalModal';
 import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
@@ -455,6 +456,12 @@ export class ChatSession {
   private async initService(): Promise<void> {
     try {
       this.service = new RunnerService(this.config);
+
+      // Wire approval callback
+      this.service.setApprovalCallback(async (toolName, input, summary) => {
+        const decision = await ApprovalModal.prompt(this.deps.app, toolName, input, summary);
+        return decision === 'cancel' ? 'deny' : decision;
+      });
 
       this.service.setPermissionModeSyncCallback((mode) => {
         this.toolbar.update({ permissionMode: mode as PermissionMode });
