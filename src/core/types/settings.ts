@@ -43,7 +43,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerProjectPath: '',
 
   model: 'sonnet',
-  thinkingBudget: 'low',
+  thinkingBudget: 'medium',
 
   permissionMode: 'default',
   enableVaultRestriction: false,

@@ -16,11 +16,10 @@ export function is1MModel(model: string): boolean {
   return model.endsWith('[1m]');
 }
 
-export type ThinkingBudget = 'off' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingBudget = 'off' | 'medium' | 'high' | 'xhigh';
 
 export const THINKING_BUDGETS: { value: ThinkingBudget; label: string; tokens: number }[] = [
   { value: 'off', label: 'Off', tokens: 0 },
-  { value: 'low', label: 'Low', tokens: 4000 },
   { value: 'medium', label: 'Med', tokens: 8000 },
   { value: 'high', label: 'High', tokens: 16000 },
   { value: 'xhigh', label: 'Ultra', tokens: 32000 },
