@@ -6,6 +6,7 @@ import { SessionStorage, VaultFileAdapter } from './core/storage';
 import type { CassandraSettings } from './core/types';
 import { DEFAULT_SETTINGS } from './core/types';
 import { CassandraView, VIEW_TYPE_CASSANDRA } from './features/chat/CassandraView';
+import { CassandraSettingsTab } from './features/settings/CassandraSettingsTab';
 
 export default class CassandraPlugin extends Plugin {
   settings: CassandraSettings = { ...DEFAULT_SETTINGS };
@@ -29,6 +30,8 @@ export default class CassandraPlugin extends Plugin {
       name: 'Open chat',
       callback: () => this.activateView(),
     });
+
+    this.addSettingTab(new CassandraSettingsTab(this.app, this));
   }
 
   async onunload() {
