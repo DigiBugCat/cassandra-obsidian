@@ -39,18 +39,6 @@ export class CassandraSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Auto-start runner')
-      .setDesc('Automatically start the runner Docker container on plugin load')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.runnerAutoStart)
-          .onChange(async (value) => {
-            this.plugin.settings.runnerAutoStart = value;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
       .setName('Project path')
       .setDesc('Working directory for the runner (defaults to vault path)')
       .addText((text) =>

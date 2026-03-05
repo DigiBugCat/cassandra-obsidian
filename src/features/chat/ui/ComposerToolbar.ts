@@ -1,11 +1,8 @@
 /**
  * ComposerToolbar — bottom toolbar for the composer.
  *
- * Ported from Claudian's InputToolbar with cassandra- prefix.
  * Layout: Model → Thinking → Token count → Refresh → Vault restriction → Permission toggle
- *
- * Uses Obsidian's setIcon for icons. Hover dropdowns for model/thinking (matches Claudian).
- * Permission toggle is a Safe/YOLO switch (matches Claudian).
+ * Hover dropdowns for model selector with click fallback for mobile.
  */
 
 import { setIcon } from 'obsidian';

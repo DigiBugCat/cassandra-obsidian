@@ -14,7 +14,6 @@ export type ApprovalDecision = 'allow' | 'allow-always' | 'deny' | 'cancel';
 export interface CassandraSettings {
   // Runner backend
   runnerUrl: string;
-  runnerAutoStart: boolean;
   runnerProjectPath: string;
   runnerVaultName: string;
 
@@ -43,7 +42,6 @@ export interface CassandraSettings {
 
 export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerUrl: 'http://localhost:9080',
-  runnerAutoStart: true,
   runnerProjectPath: '',
   runnerVaultName: '',
 

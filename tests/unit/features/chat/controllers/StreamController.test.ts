@@ -20,7 +20,6 @@ function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 function makeSettings(overrides: Partial<CassandraSettings> = {}): CassandraSettings {
   return {
     runnerUrl: 'http://localhost:9080',
-    runnerAutoStart: false,
     runnerProjectPath: '',
     runnerVaultName: '',
     model: 'sonnet',

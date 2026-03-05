@@ -99,32 +99,21 @@ btn.click();
 
 ## Current Status
 
-### Working (verified in Obsidian via CLI)
-- Plugin loads, enables, ribbon icon + command
-- Runner connection: WS connect, session create via HTTP, subscribe via WS
-- Messages send and responses arrive (confirmed: "Hello there, how are you?")
-- Event pipeline: RunnerService → transformRunnerEvent → StreamEvent → CassandraView
-- Text dedup: `sawStreamText` skips duplicate assistant text when stream deltas present
-- Usage calculation: context = input + cache tokens (matches SDK path)
-- Debug logging: all levels to console via `createLogger()`
-- Permission mode mapping: Cassandra `'normal'` → SDK `'default'`
-- Hot-reload via `.hotreload` file + Obsidian CLI `plugin:reload`
+### Implemented
+- **Core**: Plugin loads, ribbon icon + command, hot-reload via `.hotreload`
+- **Runner connection**: WS connect, session create via HTTP, subscribe via WS
+- **Streaming**: Full event pipeline (RunnerService → transformRunnerEvent → StreamEvent → CassandraView), text dedup, token-level streaming via runner patches
+- **Chat UI**: MessageRenderer, ToolCallRenderer, WriteEditRenderer, DiffRenderer, ThinkingBlockRenderer, SubagentRenderer
+- **Controllers**: StreamController, InputController (Enter sends, Shift+Enter newline, Escape cancels)
+- **Composer**: Toolbar (model selector, thinking toggle, token count, refresh, vault restriction, Safe/YOLO toggle), image paste/drop, file @-mentions with chips
+- **Tabs**: TabManager, TabBar, multi-tab ChatSession
+- **Storage**: VaultFileAdapter, SessionStorage, history dropdown in header
+- **Sessions**: Fork/rewind via context menu, stale session auto-recovery
+- **Approval**: ApprovalModal (Allow/Deny/Always) for permission requests
+- **Settings**: Runner URL, project path, Obsidian Sync, model, thinking, permission mode, vault restriction, MCP servers (JSON), system prompt, compact instructions, UI options
+- **Mobile**: Click-to-toggle fallback for model dropdown, 44px touch targets
 
 ### Known Issues
-
-#### Token-level streaming — FIXED
-Two patches applied to the runner Docker image (see `patches/patches/v2-streaming/README.md`):
-
-1. **SDK patch** (`sdk.mjs`): V2's `SQ` constructor hard-coded `includePartialMessages: false`.
-   Changed to read from options: `Q.includePartialMessages??!1`.
-
-2. **CLI patch** (`cli-patched.js`): CLI enforced `--include-partial-messages requires --print`.
-   V2 interactive mode uses `--input-format stream-json` (not `--print`), but the underlying
-   `stream_event` yield code works fine in interactive mode. Removed the `--print` requirement.
-
-Verified end-to-end: `stream_event` types now flow through the pipeline
-(`system` → `stream_event`* → `assistant` → `stream_event`* → `result`).
-The `sawStreamText` dedup correctly skips the assembled `assistant` text.
 
 #### Multiple WS connections on reload
 Each plugin reload creates new WS connections without fully cleaning up old ones. The
@@ -133,51 +122,13 @@ RunnerClient reconnect logic creates stale subscriptions. Not critical but adds 
 ### Runner Docker Image
 - Rebuilt 2026-03-04: CLI 2.1.63, SDK 0.2.63, patches compiled against 2.1.63
 - Dockerfile at `claude-agent-runner/packages/runner/Dockerfile` — CLI version pinned on lines 5 and 42
-- Patched CLI works end-to-end (confirmed via HTTP API: multi-turn with context retention)
 - Token streaming: 2 patches (SDK `sdk.mjs` + CLI `cli-patched.js`) enable `stream_event` in V2
 - Deployed via k3d: `k3d image import claude-runner:latest -c claude-runner`
 
-## Migration Plan
+## Remaining Work
 
-Migrating from Claudian (frozen). Cherry-picking clean modules, rewriting entangled ones.
-Master plan: `~/.claude/plans/rosy-stirring-piglet.md`
-
-### Phase 1: Scaffold — DONE
-### Phase 2: Runner Core — DONE
-
-Token streaming fixed — two patches in runner Dockerfile (SDK + CLI).
-
-### Phase 3: Chat UI (next)
-- Copy renderers from Claudian (MessageRenderer, ToolCallRenderer, ThinkingBlockRenderer, DiffRenderer)
-- Copy controllers (ConversationController, StreamController, InputController)
-- Copy state management
-- CSS: port from Claudian with `cassandra-` prefix
-- Replace `path.basename()` / `path.extname()` with pure JS helpers
-- **Milestone: full chat experience with tool calls, thinking, diffs**
-
-### Phase 4: Storage + Sessions
-- VaultFileAdapter (Obsidian API, mobile-safe)
-- StorageService (sans migration), SessionStorage, SettingsStorage
-- CCSettingsStorage, SlashCommandStorage, SkillStorage
-- Settings tab (CassandraSettings — fresh, runner-focused)
-- **Milestone: sessions persist across restarts, settings work**
-
-### Phase 5: Features
-- Tabs (TabManager, TabBar) + Thread tree tabs
-- Threads sidebar (all conversations, expandable tree)
-- @-mentions + slash commands
-- Fork/rewind
-- Approval UI (permission modal)
-- File context + thinking blocks
-- **Milestone: feature parity with Claudian runner path**
-
-### Phase 6: SDK Fallback (desktop only)
-- SDKAgentService (quarantined, gated behind Platform.isMobile)
-- SecurityHooks, HookExecutor (desktop-only)
-- **Milestone: works without runner on desktop**
-
-### Phase 7: Polish + Mobile
-- Logger: injectable sink (console on mobile, file on desktop)
-- Docker auto-start (desktop guard)
-- Remove all `claudian` references
-- Test on iOS Obsidian
+| Feature | Priority | Notes |
+|---|---|---|
+| **Threads sidebar** | Medium | Expandable tree view of all conversations with folders, pin, archive. Currently history is a header dropdown only. Type fields (`threadFolderId`, `threadPinned`, `threadArchived`) exist in `chat.ts` but no UI. |
+| **Slash commands** | Low | `/` prefix in composer to trigger runner slash commands. `RunnerClient.getCommands()` exists but no UI. |
+| **iOS testing** | Medium | Test on actual iOS Obsidian device. |
