@@ -530,10 +530,19 @@ export class ChatSession {
 
   private async handleStaleSession(retryPrompt?: string): Promise<boolean> {
     log.info('stale_session_recovery', { hasRetryPrompt: !!retryPrompt });
-    this.service?.resetSession();
     this.toolbar.update({ isReady: false });
     this.statusEl.textContent = 'Reconnecting...';
-    const ready = await this.service?.ensureReady();
+
+    // Try reconnecting to the existing session first (preserves context)
+    let ready = await this.service?.reconnect();
+
+    // If reconnect failed (session truly dead), create a new one
+    if (!ready) {
+      log.info('stale_session_creating_new');
+      this.service?.resetSession();
+      ready = await this.service?.ensureReady();
+    }
+
     this.toolbar.update({ isReady: !!ready });
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
     await this.saveSessionMetadata();
@@ -542,7 +551,6 @@ export class ChatSession {
     if (ready && retryPrompt) {
       log.info('stale_session_retry', { prompt: retryPrompt.slice(0, 60) });
       this.inputEl.value = retryPrompt;
-      // Small delay so the UI shows the reconnection state before retrying
       setTimeout(() => this.handleSendOrCancel(), 200);
     }
 
