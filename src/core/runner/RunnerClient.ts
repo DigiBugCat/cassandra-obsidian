@@ -213,13 +213,14 @@ export class RunnerClient extends EventEmitter {
     });
   }
 
-  setOptions(sessionId: string, opts: { model?: string; maxThinkingTokens?: number; compactInstructions?: string }): void {
+  setOptions(sessionId: string, opts: { model?: string; maxThinkingTokens?: number; compactInstructions?: string; permissionMode?: string }): void {
     this.sendFrame({
       type: 'set_options',
       session_id: sessionId,
       ...(opts.model ? { model: opts.model } : {}),
       ...(opts.maxThinkingTokens !== undefined ? { max_thinking_tokens: opts.maxThinkingTokens } : {}),
       ...(opts.compactInstructions ? { compact_instructions: opts.compactInstructions } : {}),
+      ...(opts.permissionMode ? { permission_mode: opts.permissionMode } : {}),
       request_id: this.nextRequestId(),
     });
   }

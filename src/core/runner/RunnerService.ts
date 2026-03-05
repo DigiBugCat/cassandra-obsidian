@@ -56,6 +56,7 @@ export class RunnerService implements AgentService {
   private pendingResumeAt: string | undefined;
   private currentModel: string | undefined;
   private currentThinkingBudget: string | undefined;
+  private currentPermissionMode: string | undefined;
 
   // Active query resolvers
   private queryResolvers: Array<{
@@ -445,7 +446,7 @@ export class RunnerService implements AgentService {
     if (!this.runnerSessionId || !this.client.isConnected()) return;
 
     const { settings } = this.config;
-    const opts: { model?: string; maxThinkingTokens?: number } = {};
+    const opts: { model?: string; maxThinkingTokens?: number; permissionMode?: string } = {};
     let changed = false;
 
     if (settings.model !== this.currentModel && this.currentModel !== undefined) {
@@ -460,6 +461,15 @@ export class RunnerService implements AgentService {
       changed = true;
     }
     this.currentThinkingBudget = settings.thinkingBudget;
+
+    const mappedMode = settings.permissionMode === 'yolo' ? 'bypassPermissions'
+      : settings.permissionMode === 'normal' ? 'default'
+      : settings.permissionMode;
+    if (mappedMode !== this.currentPermissionMode && this.currentPermissionMode !== undefined) {
+      opts.permissionMode = mappedMode;
+      changed = true;
+    }
+    this.currentPermissionMode = mappedMode;
 
     if (changed) this.client.setOptions(this.runnerSessionId, opts);
   }
