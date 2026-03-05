@@ -5,6 +5,8 @@ export {
 } from './collapsible';
 export type { DiffHunk } from './DiffRenderer';
 export { renderDiffContent, splitIntoHunks } from './DiffRenderer';
+export type { RenderDeps } from './MessageRenderer';
+export { MessageRenderer } from './MessageRenderer';
 export type { RenderContentFn } from './ThinkingBlockRenderer';
 export {
   appendThinkingContent,
