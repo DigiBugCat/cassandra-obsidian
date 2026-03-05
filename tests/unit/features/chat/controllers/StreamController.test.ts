@@ -24,7 +24,7 @@ function makeSettings(overrides: Partial<CassandraSettings> = {}): CassandraSett
     runnerProjectPath: '',
     model: 'sonnet',
     thinkingBudget: 'low',
-    permissionMode: 'normal',
+    permissionMode: 'default',
     enableVaultRestriction: false,
     systemPrompt: '',
     compactInstructions: '',

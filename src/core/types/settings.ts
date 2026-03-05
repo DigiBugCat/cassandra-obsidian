@@ -4,8 +4,8 @@
 
 import type { ClaudeModel, ThinkingBudget } from './models';
 
-/** Permission mode for tool execution. */
-export type PermissionMode = 'yolo' | 'plan' | 'normal';
+/** Permission mode for tool execution — matches SDK PermissionMode values. */
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk';
 
 /** User decision from the approval modal. */
 export type ApprovalDecision = 'allow' | 'allow-always' | 'deny' | 'cancel';
@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   model: 'sonnet',
   thinkingBudget: 'low',
 
-  permissionMode: 'normal',
+  permissionMode: 'default',
   enableVaultRestriction: false,
 
   systemPrompt: '',

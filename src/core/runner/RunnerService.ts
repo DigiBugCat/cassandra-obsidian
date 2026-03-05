@@ -253,9 +253,7 @@ export class RunnerService implements AgentService {
           model: settings.model,
           systemPrompt: settings.systemPrompt || undefined,
           thinking: (budgetConfig?.tokens ?? 0) > 0,
-          permissionMode: settings.permissionMode === 'yolo' ? 'bypassPermissions'
-            : settings.permissionMode === 'normal' ? 'default'
-            : settings.permissionMode,
+          permissionMode: settings.permissionMode,
           compactInstructions: settings.compactInstructions || undefined,
           allowedPaths: settings.enableVaultRestriction ? [vaultPath] : undefined,
           additionalDirectories: settings.persistentExternalContextPaths.length > 0
@@ -462,14 +460,11 @@ export class RunnerService implements AgentService {
     }
     this.currentThinkingBudget = settings.thinkingBudget;
 
-    const mappedMode = settings.permissionMode === 'yolo' ? 'bypassPermissions'
-      : settings.permissionMode === 'normal' ? 'default'
-      : settings.permissionMode;
-    if (mappedMode !== this.currentPermissionMode && this.currentPermissionMode !== undefined) {
-      opts.permissionMode = mappedMode;
+    if (settings.permissionMode !== this.currentPermissionMode && this.currentPermissionMode !== undefined) {
+      opts.permissionMode = settings.permissionMode;
       changed = true;
     }
-    this.currentPermissionMode = mappedMode;
+    this.currentPermissionMode = settings.permissionMode;
 
     if (changed) this.client.setOptions(this.runnerSessionId, opts);
   }
