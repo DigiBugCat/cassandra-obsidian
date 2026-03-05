@@ -10,11 +10,12 @@ import type { App, Component } from 'obsidian';
 import type { AgentConfig, AgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
-import type { UsageInfo } from '../../core/types';
+import type { CassandraSettings, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
 import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
 import { ChatState } from './state';
+import { ComposerToolbar } from './ui';
 
 const log = createLogger('ChatSession');
 
@@ -23,24 +24,27 @@ export interface ChatSessionDeps {
   app: App;
   component: Component;
   containerEl: HTMLElement;
+  saveSettings?: (settings: CassandraSettings) => Promise<void>;
 }
 
 export class ChatSession {
   private config: AgentConfig;
+  private deps: ChatSessionDeps;
   private service: RunnerService | null = null;
   private state: ChatState;
   private renderer: MessageRenderer;
   private streamController: StreamController;
   private inputController: InputController;
+  private toolbar: ComposerToolbar;
 
   // DOM refs
   private messagesEl: HTMLElement;
   private inputEl: HTMLTextAreaElement;
-  private sendBtn: HTMLElement;
   private statusEl: HTMLElement;
 
   constructor(deps: ChatSessionDeps) {
     this.config = deps.config;
+    this.deps = deps;
 
     // Build DOM
     const container = deps.containerEl;
@@ -55,24 +59,42 @@ export class ChatSession {
     // Messages area
     this.messagesEl = container.createEl('div', { cls: 'cassandra-messages' });
 
-    // Input area
-    const inputArea = container.createEl('div', { cls: 'cassandra-input-area' });
-    this.inputEl = inputArea.createEl('textarea', {
+    // Composer wrapper
+    const composer = container.createEl('div', { cls: 'cassandra-composer' });
+    this.inputEl = composer.createEl('textarea', {
       cls: 'cassandra-input',
       attr: { placeholder: 'Message Cassandra...', rows: '3' },
     });
-    this.sendBtn = inputArea.createEl('button', { cls: 'cassandra-send-btn', text: 'Send' });
+
+    // Toolbar
+    const settings = this.config.settings;
+    this.toolbar = new ComposerToolbar(composer, {
+      onModelChange: (model) => this.handleModelChange(model),
+      onThinkingChange: (budget) => this.handleThinkingChange(budget),
+      onPermissionModeChange: (mode) => this.handlePermissionModeChange(mode),
+      onVaultRestrictionChange: (enabled) => this.handleVaultRestrictionChange(enabled),
+      onRefreshSession: () => this.handleRefreshSession(),
+    }, {
+      model: settings.model,
+      thinkingBudget: settings.thinkingBudget,
+      permissionMode: settings.permissionMode,
+      vaultRestriction: settings.enableVaultRestriction,
+      isStreaming: false,
+      isReady: false,
+      usage: null,
+    });
 
     // State with callbacks
     this.state = new ChatState({
       onStreamingStateChanged: (isStreaming) => {
         this.statusEl.textContent = isStreaming ? 'Streaming...' : this.formatStatusText();
-        this.sendBtn.textContent = isStreaming ? 'Cancel' : 'Send';
+        this.toolbar.update({ isStreaming });
       },
       onUsageChanged: (usage) => {
         if (!this.state.isStreaming) {
           this.statusEl.textContent = this.formatStatusText(usage);
         }
+        this.toolbar.update({ usage });
       },
     });
 
@@ -97,14 +119,13 @@ export class ChatSession {
       streamController: this.streamController,
       renderer: this.renderer,
       getInputEl: () => this.inputEl,
-      getSendBtn: () => this.sendBtn,
+      getSendBtn: () => null, // send button is now in the toolbar
       getMessagesEl: () => this.messagesEl,
     });
 
-    // Wire input events
-    this.sendBtn.addEventListener('click', () => this.handleSendOrCancel());
+    // Wire input events (matches Claudian: Enter=send, Escape=cancel, Shift+Enter=newline)
     this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         this.handleSendOrCancel();
       }
@@ -113,6 +134,9 @@ export class ChatSession {
         this.inputController.cancelStreaming();
       }
     });
+
+    // Auto-resize textarea
+    this.inputEl.addEventListener('input', () => this.autoResize());
 
     // Init service
     this.initService();
@@ -126,18 +150,81 @@ export class ChatSession {
     }
   }
 
+  // ── Settings handlers ──────────────────────────────────────────
+
+  private handleModelChange(model: string): void {
+    this.config.settings.model = model;
+    this.service?.updateConfig(this.config);
+    this.persistSettings();
+    this.toolbar.update({ model });
+  }
+
+  private handleThinkingChange(budget: ThinkingBudget): void {
+    this.config.settings.thinkingBudget = budget;
+    this.service?.updateConfig(this.config);
+    this.persistSettings();
+    this.toolbar.update({ thinkingBudget: budget });
+  }
+
+  private handlePermissionModeChange(mode: PermissionMode): void {
+    this.config.settings.permissionMode = mode;
+    this.service?.updateConfig(this.config);
+    this.persistSettings();
+    this.toolbar.update({ permissionMode: mode });
+  }
+
+  private handleVaultRestrictionChange(enabled: boolean): void {
+    this.config.settings.enableVaultRestriction = enabled;
+    this.service?.updateConfig(this.config);
+    this.persistSettings();
+    this.toolbar.update({ vaultRestriction: enabled });
+  }
+
+  private async handleRefreshSession(): Promise<void> {
+    this.toolbar.update({ isReady: false });
+    this.statusEl.textContent = 'Reconnecting...';
+    this.service?.resetSession();
+    const ready = await this.service?.ensureReady();
+    this.toolbar.update({ isReady: !!ready });
+    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+  }
+
+  private persistSettings(): void {
+    this.deps.saveSettings?.(this.config.settings);
+  }
+
+  // ── Service init ───────────────────────────────────────────────
+
   private async initService(): Promise<void> {
     try {
       this.service = new RunnerService(this.config);
+
+      // Sync permission mode from runner (e.g. when EnterPlanMode fires)
+      this.service.setPermissionModeSyncCallback((mode) => {
+        this.toolbar.update({ permissionMode: mode as PermissionMode });
+      });
+
       const ready = await this.service.ensureReady();
       this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+      this.toolbar.update({ isReady: !!ready });
       if (!ready) {
         log.warn('service_not_ready');
       }
     } catch (err) {
       log.error('service_init_failed', { error: err instanceof Error ? err.message : String(err) });
       this.statusEl.textContent = 'Connection failed';
+      this.toolbar.update({ isReady: false });
     }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────
+
+  private autoResize(): void {
+    const ta = this.inputEl;
+    ta.style.height = 'auto';
+    const containerH = ta.closest('.cassandra-container')?.clientHeight ?? 600;
+    const maxH = Math.max(150, containerH * 0.55);
+    ta.style.height = `${Math.min(ta.scrollHeight, maxH)}px`;
   }
 
   private formatStatusText(usage?: UsageInfo | null): string {
@@ -160,6 +247,7 @@ export class ChatSession {
   }
 
   cleanup(): void {
+    this.toolbar.destroy();
     this.service?.cleanup();
     this.service = null;
     this.state.resetStreamingState();

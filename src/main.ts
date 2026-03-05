@@ -13,7 +13,7 @@ export default class CassandraPlugin extends Plugin {
     await this.loadSettings();
 
     this.registerView(VIEW_TYPE_CASSANDRA, (leaf: WorkspaceLeaf) =>
-      new CassandraView(leaf, this.getAgentConfig()),
+      new CassandraView(leaf, this.getAgentConfig(), (s) => this.persistSettings(s)),
     );
 
     this.addRibbonIcon('bot', 'Open Cassandra', () => this.activateView());
@@ -45,6 +45,11 @@ export default class CassandraPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
+  private async persistSettings(updated: CassandraSettings): Promise<void> {
+    this.settings = { ...updated };
     await this.saveData(this.settings);
   }
 

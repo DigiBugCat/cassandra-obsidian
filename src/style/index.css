@@ -1,5 +1,6 @@
 @import "./base.css";
 @import "./chat.css";
+@import "./composer.css";
 @import "./toolcalls.css";
 @import "./thinking.css";
 @import "./diff.css";

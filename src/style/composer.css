@@ -1,0 +1,410 @@
+/* ── Composer wrapper (input-wrapper) ─────────────────────────── */
+
+.cassandra-input-container {
+  position: relative;
+  padding: 12px 0 0 0;
+}
+
+.cassandra-composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+}
+
+.cassandra-composer .cassandra-input {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 60px;
+  resize: none;
+  padding: 8px 10px 10px 10px;
+  border: none !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: none !important;
+  overflow-y: auto;
+  unicode-bidi: plaintext;
+}
+
+.cassandra-composer .cassandra-input:hover,
+.cassandra-composer .cassandra-input:focus {
+  outline: none !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.cassandra-composer .cassandra-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Input toolbar ───────────────────────────────────────────── */
+
+.cassandra-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  padding: 4px 6px 6px 6px;
+}
+
+/* ── Model selector ──────────────────────────────────────────── */
+
+.cassandra-model-selector {
+  position: relative;
+}
+
+.cassandra-model-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.cassandra-model-btn.ready {
+  color: var(--interactive-accent);
+}
+
+.cassandra-model-label {
+  font-weight: 500;
+}
+
+.cassandra-backend-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  color: var(--text-faint);
+  line-height: 1.2;
+}
+
+.cassandra-model-btn.ready .cassandra-backend-badge {
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.12);
+  color: var(--interactive-accent);
+}
+
+.cassandra-model-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  width: max-content;
+  padding: 4px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.cassandra-model-selector:hover .cassandra-model-dropdown {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cassandra-model-option {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 3px;
+  transition: background 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+
+.cassandra-model-option:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.cassandra-model-option.selected {
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.15);
+  color: var(--interactive-accent);
+  font-weight: 500;
+}
+
+/* ── Thinking selector ───────────────────────────────────────── */
+
+.cassandra-thinking-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+.cassandra-thinking-label-text {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cassandra-thinking-gears {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.cassandra-thinking-current {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--interactive-accent);
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.cassandra-thinking-options {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.cassandra-thinking-gears:hover .cassandra-thinking-options {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cassandra-thinking-gear {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+
+.cassandra-thinking-gear:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.cassandra-thinking-gear.selected {
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.15);
+  color: var(--interactive-accent);
+  font-weight: 500;
+}
+
+/* ── Token count ─────────────────────────────────────────────── */
+
+.cassandra-token-count {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: default;
+  border-radius: 4px;
+  transition: color 0.2s ease;
+}
+
+.cassandra-token-count::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.cassandra-token-count:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cassandra-token-output {
+  margin-inline-start: 4px;
+  color: var(--text-faint);
+}
+
+.cassandra-token-count.warning {
+  color: #E57373;
+}
+
+.cassandra-token-count.warning .cassandra-token-output {
+  color: #E57373;
+}
+
+/* ── Refresh session ─────────────────────────────────────────── */
+
+.cassandra-refresh-session {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.cassandra-refresh-session-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: color 0.15s ease;
+}
+
+.cassandra-refresh-session-icon:hover {
+  color: var(--text-normal);
+}
+
+.cassandra-refresh-session-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cassandra-refresh-session-icon.is-refreshing {
+  color: var(--interactive-accent);
+}
+
+.cassandra-refresh-session-icon.is-refreshing svg {
+  animation: cassandra-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes cassandra-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Vault restriction toggle ────────────────────────────────── */
+
+.cassandra-vault-restriction-toggle {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.cassandra-vault-restriction-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: color 0.2s ease;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.cassandra-vault-restriction-icon:hover {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-vault-restriction-icon.active {
+  color: var(--interactive-accent);
+}
+
+.cassandra-vault-restriction-icon.active:hover {
+  color: var(--interactive-accent);
+}
+
+.cassandra-vault-restriction-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Permission toggle ───────────────────────────────────────── */
+
+.cassandra-permission-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 12px;
+  padding-right: 8px;
+}
+
+.cassandra-permission-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+.cassandra-permission-label.plan-active {
+  color: rgb(92, 148, 140);
+  font-weight: 600;
+}
+
+.cassandra-toggle-switch {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--background-modifier-border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.cassandra-toggle-switch::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.cassandra-toggle-switch:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-toggle-switch.active {
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.3);
+}
+
+.cassandra-toggle-switch.active::after {
+  transform: translateX(14px);
+  background: var(--interactive-accent);
+}
