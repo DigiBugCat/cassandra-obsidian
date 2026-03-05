@@ -19,6 +19,7 @@ export class CassandraView extends ItemView {
   private statusEl: HTMLElement | null = null;
   private sendBtn: HTMLElement | null = null;
 
+
   constructor(leaf: WorkspaceLeaf, config: AgentConfig) {
     super(leaf);
     this.config = config;

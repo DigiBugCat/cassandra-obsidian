@@ -45,58 +45,95 @@
   color: var(--text-normal);
 }
 
-/* Tool calls */
-.cassandra-tools {
-  margin-bottom: 8px;
+/* Text blocks */
+.cassandra-text-block {
+  line-height: 1.6;
 }
 
-.cassandra-tool {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  background: var(--background-secondary);
-  font-size: var(--font-ui-smaller);
-}
-
-.cassandra-tool-completed {
-  opacity: 0.8;
-}
-
-.cassandra-tool-error {
-  border-left: 2px solid var(--text-error);
-}
-
-.cassandra-tool-running {
-  border-left: 2px solid var(--interactive-accent);
-}
-
-.cassandra-tool-name {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.cassandra-tool-detail {
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Markdown in assistant messages */
-.cassandra-md {
-  line-height: 1.5;
-}
-
-.cassandra-md p:first-child {
+.cassandra-text-block p:first-child {
   margin-top: 0;
 }
 
-.cassandra-md p:last-child {
+.cassandra-text-block p:last-child {
   margin-bottom: 0;
+}
+
+/* Code block wrapper */
+.cassandra-code-wrapper {
+  position: relative;
+  margin: 8px 0;
+}
+
+.cassandra-code-wrapper pre {
+  margin: 0;
+}
+
+.cassandra-code-lang-label {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* Text copy button */
+.cassandra-text-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+}
+
+.cassandra-text-copy-btn:hover {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+
+/* Compact boundary */
+.cassandra-compact-boundary {
+  text-align: center;
+  padding: 8px 0;
+  margin: 12px 0;
+  border-top: 1px dashed var(--background-modifier-border);
+}
+
+.cassandra-compact-boundary-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Response footer */
+.cassandra-response-footer {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+
+.cassandra-interrupted {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* File links */
+.cassandra-file-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.cassandra-file-link:hover {
+  color: var(--text-accent);
 }
 
 /* Input */
