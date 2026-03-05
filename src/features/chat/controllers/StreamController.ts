@@ -184,9 +184,13 @@ export class StreamController {
         break;
       }
 
-      // SDK session UUID events — no UI action needed.
-      case 'sdk_assistant_uuid':
+      // SDK session UUID events — store on messages for rewind/fork.
       case 'sdk_user_uuid':
+        msg.sdkUserUuid = chunk.uuid;
+        break;
+      case 'sdk_assistant_uuid':
+        msg.sdkAssistantUuid = chunk.uuid;
+        break;
       case 'sdk_user_sent':
         break;
 

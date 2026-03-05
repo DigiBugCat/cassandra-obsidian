@@ -146,10 +146,15 @@ export class ChatSession {
       },
     });
 
-    // Renderer
+    // Renderer — with rewind/fork callbacks
     this.renderer = new MessageRenderer(
       { app: deps.app, component: deps.component },
       this.messagesEl,
+      {
+        getMessages: () => this.state.getPersistedMessages(),
+        onRewind: (messageId) => this.handleRewind(messageId),
+        onFork: (messageId) => this.handleFork(messageId),
+      },
     );
 
     // StreamController
@@ -380,6 +385,67 @@ export class ChatSession {
     await this.saveSessionMetadata();
 
     this.inputEl.focus();
+  }
+
+  // ── Rewind / Fork ─────────────────────────────────────────────
+
+  private async handleRewind(messageId: string): Promise<void> {
+    if (this.state.isStreaming) return;
+
+    const messages = this.state.getPersistedMessages();
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    if (msgIndex < 0) return;
+
+    const msg = messages[msgIndex];
+    if (!msg.sdkUserUuid) {
+      log.warn('rewind_no_uuid', { messageId });
+      return;
+    }
+
+    // Find the runner session
+    const sessionId = this.service?.getSessionId();
+    if (!sessionId) return;
+
+    // Remove messages from this point onward in state
+    const truncated = messages.slice(0, msgIndex);
+    this.state.messages = truncated;
+
+    // Remove message DOM elements after the rewind point
+    const allMsgEls = this.messagesEl.querySelectorAll('.cassandra-message');
+    for (let i = msgIndex; i < allMsgEls.length; i++) {
+      allMsgEls[i].remove();
+    }
+
+    // Tell the runner to rewind
+    // RunnerClient.rewind uses the user_message_uuid to rewind the SDK session
+    (this.service as any)?.client?.rewind(sessionId, msg.sdkUserUuid);
+
+    log.info('rewind', { messageId, sdkUserUuid: msg.sdkUserUuid, removedCount: messages.length - msgIndex });
+    await this.saveSessionMetadata();
+  }
+
+  private async handleFork(messageId: string): Promise<void> {
+    if (this.state.isStreaming) return;
+
+    const messages = this.state.getPersistedMessages();
+    const msg = messages.find(m => m.id === messageId);
+    if (!msg?.sdkUserUuid) {
+      log.warn('fork_no_uuid', { messageId });
+      return;
+    }
+
+    // Set pendingResumeAt so the next query forks at this point
+    this.service?.setPendingResumeAt(msg.sdkUserUuid);
+
+    // Clear the current messages and DOM (the fork creates a new session)
+    this.state.messages = [];
+    this.messagesEl.empty();
+
+    // Focus input — user types the new message which triggers the fork
+    this.inputEl.focus();
+    this.inputEl.placeholder = 'Type a message to fork from this point...';
+
+    log.info('fork_pending', { messageId, sdkUserUuid: msg.sdkUserUuid });
   }
 
   // ── Session metadata persistence ─────────────────────────────

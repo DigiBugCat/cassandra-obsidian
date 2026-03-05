@@ -2,19 +2,28 @@ import type { App, Component } from 'obsidian';
 import { MarkdownRenderer, Menu, Notice } from 'obsidian';
 
 import type { ChatMessage } from '../../../core/types';
+import { findRewindContext } from '../rewind';
 
 export interface RenderDeps {
   app: App;
   component: Component;
 }
 
+export interface MessageActionCallbacks {
+  onRewind?: (messageId: string) => Promise<void>;
+  onFork?: (messageId: string) => Promise<void>;
+  getMessages?: () => ChatMessage[];
+}
+
 export class MessageRenderer {
   private deps: RenderDeps;
   private messagesEl: HTMLElement;
+  private actionCallbacks: MessageActionCallbacks;
 
-  constructor(deps: RenderDeps, messagesEl: HTMLElement) {
+  constructor(deps: RenderDeps, messagesEl: HTMLElement, actionCallbacks: MessageActionCallbacks = {}) {
     this.deps = deps;
     this.messagesEl = messagesEl;
+    this.actionCallbacks = actionCallbacks;
 
     // Delegated context menu handler for message actions
     this.messagesEl.addEventListener('contextmenu', (e) => this.handleContextMenu(e));
@@ -24,11 +33,6 @@ export class MessageRenderer {
   // Message DOM
   // ============================================
 
-  /**
-   * Adds a new message bubble to the chat container.
-   * For assistant messages the content div is left empty — StreamController fills it.
-   * Returns the message element.
-   */
   addMessage(msg: ChatMessage): HTMLElement {
     const msgEl = this.messagesEl.createDiv({
       cls: `cassandra-message cassandra-message-${msg.role}`,
@@ -62,10 +66,6 @@ export class MessageRenderer {
   // Content Rendering
   // ============================================
 
-  /**
-   * Renders markdown content into el using Obsidian's MarkdownRenderer.
-   * Wraps <pre> blocks in .cassandra-code-wrapper and adds language labels.
-   */
   async renderContent(el: HTMLElement, markdown: string): Promise<void> {
     el.empty();
 
@@ -79,14 +79,12 @@ export class MessageRenderer {
       );
 
       el.querySelectorAll('pre').forEach((pre) => {
-        // Skip if already wrapped
         if (pre.parentElement?.classList.contains('cassandra-code-wrapper')) return;
 
         const wrapper = createEl('div', { cls: 'cassandra-code-wrapper' });
         pre.parentElement?.insertBefore(wrapper, pre);
         wrapper.appendChild(pre);
 
-        // Detect language and add label
         const code = pre.querySelector('code[class*="language-"]');
         if (code) {
           const match = code.className.match(/language-(\w+)/);
@@ -102,14 +100,11 @@ export class MessageRenderer {
                 await navigator.clipboard.writeText(code.textContent ?? '');
                 label.setText('copied!');
                 setTimeout(() => label.setText(match[1]), 1500);
-              } catch {
-                // Clipboard API may fail in non-secure contexts
-              }
+              } catch { /* non-secure context */ }
             });
           }
         }
 
-        // Move Obsidian's built-in copy button outside the pre into wrapper
         const copyBtn = pre.querySelector('.copy-code-button');
         if (copyBtn) {
           wrapper.appendChild(copyBtn);
@@ -127,13 +122,8 @@ export class MessageRenderer {
   // Copy Button
   // ============================================
 
-  /** Clipboard icon SVG for copy button. */
   private static readonly COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
 
-  /**
-   * Adds a copy button to a rendered text block.
-   * Shows clipboard icon on hover, changes to "copied!" on click.
-   */
   addTextCopyButton(textEl: HTMLElement, markdown: string): void {
     const copyBtn = textEl.createSpan({ cls: 'cassandra-text-copy-btn' });
     copyBtn.innerHTML = MessageRenderer.COPY_ICON;
@@ -142,22 +132,15 @@ export class MessageRenderer {
 
     copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-
       try {
         await navigator.clipboard.writeText(markdown);
       } catch {
-        // Clipboard API may fail in non-secure contexts
         return;
       }
-
-      if (feedbackTimeout) {
-        clearTimeout(feedbackTimeout);
-      }
-
+      if (feedbackTimeout) clearTimeout(feedbackTimeout);
       copyBtn.innerHTML = '';
       copyBtn.setText('copied!');
       copyBtn.classList.add('copied');
-
       feedbackTimeout = setTimeout(() => {
         copyBtn.innerHTML = MessageRenderer.COPY_ICON;
         copyBtn.classList.remove('copied');
@@ -173,7 +156,6 @@ export class MessageRenderer {
   private handleContextMenu(e: MouseEvent): void {
     const target = e.target as HTMLElement;
 
-    // Let native context menu handle copy button and code blocks
     if (
       target.closest('.cassandra-text-copy-btn') ||
       target.closest('.cassandra-code-wrapper')
@@ -186,7 +168,6 @@ export class MessageRenderer {
     ) as HTMLElement | null;
     if (!msgEl) return;
 
-    // If user has selected text, let native context menu handle copy
     const doc = typeof activeDocument !== 'undefined' ? activeDocument : document;
     const selection = doc?.getSelection?.();
     if (selection && selection.toString().trim().length > 0) {
@@ -199,9 +180,12 @@ export class MessageRenderer {
 
     const menu = new Menu();
     let hasItems = false;
+    const messages = this.actionCallbacks.getMessages?.() ?? [];
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    const msg = msgIndex >= 0 ? messages[msgIndex] : null;
 
+    // ── Assistant actions ──
     if (role === 'assistant') {
-      // Collect text content from the rendered text blocks
       const textBlocks = msgEl.querySelectorAll<HTMLElement>('.cassandra-text-block');
       const parts: string[] = [];
       textBlocks.forEach((block) => {
@@ -224,22 +208,68 @@ export class MessageRenderer {
       }
     }
 
+    // ── User message actions ──
+    if (role === 'user' && msg) {
+      // Copy user message
+      menu.addItem((item) => {
+        item.setTitle('Copy message');
+        item.setIcon('copy');
+        item.onClick(() => {
+          void navigator.clipboard.writeText(msg.content).catch(() => {
+            new Notice('Failed to copy to clipboard.');
+          });
+        });
+      });
+      hasItems = true;
+
+      // Rewind
+      if (msg.sdkUserUuid && this.isRewindEligible(messages, msgIndex) && this.actionCallbacks.onRewind) {
+        const rewindCb = this.actionCallbacks.onRewind;
+        menu.addItem((item) => {
+          item.setTitle('Rewind to here');
+          item.setIcon('rotate-ccw');
+          item.onClick(() => {
+            void rewindCb(messageId).catch((err: unknown) => {
+              new Notice(`Rewind failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            });
+          });
+        });
+      }
+
+      // Fork
+      if (msg.sdkUserUuid && this.actionCallbacks.onFork) {
+        const forkCb = this.actionCallbacks.onFork;
+        menu.addItem((item) => {
+          item.setTitle('Fork from here');
+          item.setIcon('git-branch');
+          item.onClick(() => {
+            void forkCb(messageId).catch((err: unknown) => {
+              new Notice(`Fork failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            });
+          });
+        });
+      }
+    }
+
     if (hasItems) {
       e.preventDefault();
       menu.showAtMouseEvent(e);
     }
   }
 
+  private isRewindEligible(allMessages: ChatMessage[], index: number): boolean {
+    const ctx = findRewindContext(allMessages, index);
+    return !!ctx.prevAssistantUuid && ctx.hasResponse;
+  }
+
   // ============================================
   // Scroll
   // ============================================
 
-  /** Scrolls messages container to bottom. */
   scrollToBottom(): void {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
-  /** Scrolls to bottom only if already near the bottom (within threshold px). */
   scrollToBottomIfNeeded(threshold = 100): void {
     const { scrollTop, scrollHeight, clientHeight } = this.messagesEl;
     const isNearBottom = scrollHeight - scrollTop - clientHeight < threshold;
