@@ -7,6 +7,12 @@ export type { DiffHunk } from './DiffRenderer';
 export { renderDiffContent, splitIntoHunks } from './DiffRenderer';
 export type { RenderDeps } from './MessageRenderer';
 export { MessageRenderer } from './MessageRenderer';
+export {
+  clearSubagentBlocks,
+  finalizeSubagentBlock,
+  getOrCreateSubagentBlock,
+  handleSubagentEvent,
+} from './SubagentRenderer';
 export type { RenderContentFn } from './ThinkingBlockRenderer';
 export {
   appendThinkingContent,

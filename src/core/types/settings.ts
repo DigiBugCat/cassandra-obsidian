@@ -26,6 +26,9 @@ export interface CassandraSettings {
   permissionMode: PermissionMode;
   enableVaultRestriction: boolean;
 
+  // MCP
+  mcpServersJson: string;
+
   // Content
   systemPrompt: string;
   compactInstructions: string;
@@ -43,6 +46,8 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerAutoStart: true,
   runnerProjectPath: '',
   runnerVaultName: '',
+
+  mcpServersJson: '',
 
   model: 'sonnet',
   thinkingBudget: 'medium',

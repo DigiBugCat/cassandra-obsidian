@@ -63,6 +63,14 @@ export class ComposerToolbar {
     this.modelBtn = modelSelector.createEl('div', { cls: 'cassandra-model-btn' });
     this.modelDropdown = modelSelector.createEl('div', { cls: 'cassandra-model-dropdown' });
 
+    // Click-to-toggle for touch devices (hover doesn't work on mobile)
+    this.modelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = modelSelector.hasClass('is-open');
+      modelSelector.toggleClass('is-open', !isOpen);
+    });
+    document.addEventListener('click', () => modelSelector.removeClass('is-open'));
+
     // ── Thinking toggle (off ↔ medium) ──
     this.thinkingToggle = this.el.createEl('div', { cls: 'cassandra-thinking-toggle' });
     this.thinkingToggle.addEventListener('click', () => {
@@ -158,6 +166,7 @@ export class ComposerToolbar {
       option.addEventListener('click', (e) => {
         e.stopPropagation();
         this.callbacks.onModelChange(m.value);
+        this.modelBtn.closest('.cassandra-model-selector')?.removeClass('is-open');
       });
     }
   }

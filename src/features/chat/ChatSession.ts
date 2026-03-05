@@ -18,7 +18,7 @@ import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
 import { ChatState } from './state';
-import { ComposerToolbar, ImageContextManager } from './ui';
+import { ComposerToolbar, FileContextManager, ImageContextManager } from './ui';
 
 const log = createLogger('ChatSession');
 
@@ -41,6 +41,7 @@ export class ChatSession {
   private inputController: InputController;
   private toolbar: ComposerToolbar;
   private imageManager: ImageContextManager;
+  private fileManager: FileContextManager;
 
   // Current conversation metadata
   private conversationId: string;
@@ -123,6 +124,11 @@ export class ChatSession {
       onImagesChanged: () => { /* context row updates itself */ },
     });
 
+    // File context manager (@-mentions + current note)
+    this.fileManager = new FileContextManager(deps.app, composer, contextRow, this.inputEl, {
+      onFilesChanged: () => { /* chips update themselves */ },
+    });
+
     // Toolbar
     const settings = this.config.settings;
     this.toolbar = new ComposerToolbar(composer, {
@@ -186,6 +192,9 @@ export class ChatSession {
       getMessagesEl: () => this.messagesEl,
       getImages: () => this.imageManager.getImages(),
       clearImages: () => this.imageManager.clearImages(),
+      getContextXml: () => this.fileManager.getContextXml(),
+      clearFileContext: () => this.fileManager.clearAfterSend(),
+      onSessionStale: () => this.handleStaleSession(),
     });
 
     // Wire input events
@@ -386,6 +395,9 @@ export class ChatSession {
     this.messageCount = 0;
     this.firstUserMessage = '';
 
+    // Reset file context
+    this.fileManager.reset();
+
     // Re-init
     this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
     this.statusEl.textContent = 'Connecting...';
@@ -515,6 +527,18 @@ export class ChatSession {
     this.toolbar.update({ vaultRestriction: enabled });
   }
 
+  private async handleStaleSession(): Promise<boolean> {
+    log.info('stale_session_recovery');
+    this.service?.resetSession();
+    this.toolbar.update({ isReady: false });
+    this.statusEl.textContent = 'Reconnecting...';
+    const ready = await this.service?.ensureReady();
+    this.toolbar.update({ isReady: !!ready });
+    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+    await this.saveSessionMetadata();
+    return !!ready;
+  }
+
   private async handleRefreshSession(): Promise<void> {
     this.toolbar.update({ isReady: false });
     this.statusEl.textContent = 'Reconnecting...';
@@ -600,6 +624,7 @@ export class ChatSession {
     this.clearProcessingTimer();
     this.toolbar.destroy();
     this.imageManager.destroy();
+    this.fileManager.destroy();
     this.service?.cleanup();
     this.service = null;
     this.state.resetStreamingState();

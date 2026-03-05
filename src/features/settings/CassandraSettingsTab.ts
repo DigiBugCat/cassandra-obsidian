@@ -135,6 +135,44 @@ export class CassandraSettingsTab extends PluginSettingTab {
           }),
       );
 
+    // ── MCP Servers ──
+    containerEl.createEl('h2', { text: 'MCP Servers' });
+
+    const mcpSetting = new Setting(containerEl)
+      .setName('MCP server configuration')
+      .setDesc('JSON object mapping server names to their config. Applied on new sessions.');
+
+    const mcpErrorEl = containerEl.createEl('div', {
+      cls: 'setting-item-description',
+      attr: { style: 'color: var(--color-red); margin-top: -8px; margin-bottom: 8px; display: none;' },
+    });
+
+    mcpSetting.addTextArea((text) => {
+      text
+        .setPlaceholder('{\n  "my-server": {\n    "command": "npx",\n    "args": ["-y", "@my/mcp-server"]\n  }\n}')
+        .setValue(this.plugin.settings.mcpServersJson)
+        .onChange(async (value) => {
+          if (value.trim()) {
+            try {
+              JSON.parse(value);
+              mcpErrorEl.style.display = 'none';
+            } catch (e) {
+              mcpErrorEl.textContent = `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`;
+              mcpErrorEl.style.display = '';
+              return;
+            }
+          } else {
+            mcpErrorEl.style.display = 'none';
+          }
+          this.plugin.settings.mcpServersJson = value;
+          await this.plugin.saveSettings();
+        });
+      text.inputEl.rows = 6;
+      text.inputEl.style.width = '100%';
+      text.inputEl.style.fontFamily = 'var(--font-monospace)';
+      text.inputEl.style.fontSize = '12px';
+    });
+
     // ── Content ──
     containerEl.createEl('h2', { text: 'Content' });
 

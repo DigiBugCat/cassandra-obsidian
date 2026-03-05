@@ -261,3 +261,82 @@
   overflow-x: auto;
   overflow-y: auto;
 }
+
+/* ── Subagent blocks ────────────────────────────────────────── */
+
+.cassandra-subagent-block {
+  margin: 8px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cassandra-subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--background-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.cassandra-subagent-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-subagent-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-accent);
+  flex-shrink: 0;
+}
+
+.cassandra-subagent-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cassandra-subagent-label {
+  font-weight: 500;
+  color: var(--text-normal);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cassandra-subagent-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--text-accent);
+}
+
+.cassandra-subagent-status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cassandra-subagent-status.status-completed {
+  color: var(--color-green);
+}
+
+.cassandra-subagent-status.status-error {
+  color: var(--color-red);
+}
+
+.cassandra-subagent-content {
+  padding: 8px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.cassandra-subagent-text {
+  font-size: 13px;
+  color: var(--text-normal);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 6px;
+}

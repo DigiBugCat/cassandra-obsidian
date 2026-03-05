@@ -259,6 +259,7 @@ export class RunnerService implements AgentService {
           allowedPaths: settings.enableVaultRestriction ? [vaultPath] : undefined,
           additionalDirectories: settings.persistentExternalContextPaths.length > 0
             ? settings.persistentExternalContextPaths : undefined,
+          mcpServers: this.parseMcpServers(settings.mcpServersJson),
         };
 
         log.info('create_session_request', { workspace: req.workspace, model: req.model, permissionMode: req.permissionMode, thinking: req.thinking });
@@ -468,6 +469,20 @@ export class RunnerService implements AgentService {
     this.currentPermissionMode = settings.permissionMode;
 
     if (changed) this.client.setOptions(this.runnerSessionId, opts);
+  }
+
+  private parseMcpServers(json: string): RunnerSessionRequest['mcpServers'] | undefined {
+    if (!json?.trim()) return undefined;
+    try {
+      const parsed = JSON.parse(json);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed;
+      }
+      log.warn('mcp_servers_invalid_format', { reason: 'must be an object' });
+    } catch (err) {
+      log.warn('mcp_servers_parse_error', { error: String(err) });
+    }
+    return undefined;
   }
 
   private setReady(ready: boolean): void {

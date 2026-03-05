@@ -214,7 +214,8 @@
   transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 
-.cassandra-model-selector:hover .cassandra-model-dropdown {
+.cassandra-model-selector:hover .cassandra-model-dropdown,
+.cassandra-model-selector.is-open .cassandra-model-dropdown {
   opacity: 1;
   visibility: visible;
 }
@@ -460,4 +461,120 @@
 .cassandra-toggle-switch.active::after {
   transform: translateX(14px);
   background: var(--interactive-accent);
+}
+
+/* ── File chips ─────────────────────────────────────────────── */
+
+.cassandra-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cassandra-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border-radius: 4px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 200px;
+}
+
+.cassandra-file-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cassandra-file-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  color: var(--text-faint);
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.cassandra-file-chip-remove:hover {
+  color: var(--text-normal);
+}
+
+.cassandra-file-chip-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Mention dropdown ───────────────────────────────────────── */
+
+.cassandra-mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 10px;
+  right: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 4px;
+}
+
+.cassandra-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.cassandra-mention-item:hover,
+.cassandra-mention-item.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-mention-item-name {
+  color: var(--text-normal);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cassandra-mention-item-path {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: auto;
+}
+
+/* ── Mobile touch targets ───────────────────────────────────── */
+
+.is-mobile .cassandra-thinking-toggle,
+.is-mobile .cassandra-refresh-session-icon,
+.is-mobile .cassandra-vault-restriction-icon,
+.is-mobile .cassandra-toggle-switch {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.is-mobile .cassandra-model-btn {
+  min-height: 44px;
+}
+
+.is-mobile .cassandra-mention-item {
+  min-height: 44px;
 }

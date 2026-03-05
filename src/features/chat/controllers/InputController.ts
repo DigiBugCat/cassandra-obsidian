@@ -17,6 +17,9 @@ export interface InputControllerDeps {
   getMessagesEl: () => HTMLElement;
   getImages?: () => ImageAttachment[];
   clearImages?: () => void;
+  getContextXml?: () => string;
+  clearFileContext?: () => void;
+  onSessionStale?: () => Promise<boolean>;
 }
 
 export class InputController {
@@ -50,9 +53,13 @@ export class InputController {
     const images = this.deps.getImages?.() ?? [];
     if (!prompt && images.length === 0) return;
 
-    // Clear input and images immediately
+    // Prepend file context XML if present
+    const contextXml = this.deps.getContextXml?.() ?? '';
+
+    // Clear input, images, and file context immediately
     if (inputEl) inputEl.value = '';
     this.deps.clearImages?.();
+    this.deps.clearFileContext?.();
 
     // Transition to streaming state
     state.isStreaming = true;
@@ -93,7 +100,8 @@ export class InputController {
     logger.debug('handleSend: starting stream', { prompt: prompt.slice(0, 60), gen });
 
     try {
-      const stream = service.query(prompt, images.length > 0 ? images : undefined);
+      const fullPrompt = contextXml ? contextXml + prompt : prompt;
+      const stream = service.query(fullPrompt, images.length > 0 ? images : undefined);
       for await (const chunk of stream) {
         // Discard events from a previous generation (e.g. after cancel + new send)
         if (state.streamGeneration !== gen) {
@@ -109,7 +117,20 @@ export class InputController {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('handleSend: stream error', { message });
-      assistantMsg.content += `\n\n> Error: ${message}`;
+
+      // Auto-recover stale/stopped sessions
+      const isStale = /session (has )?stop/i.test(message) || /session not found/i.test(message);
+      if (isStale && this.deps.onSessionStale) {
+        logger.info('handleSend: stale session detected, auto-recovering');
+        const recovered = await this.deps.onSessionStale();
+        if (recovered) {
+          assistantMsg.content += '\n\n> Session expired — new session created. Please resend your message.';
+        } else {
+          assistantMsg.content += `\n\n> Error: ${message}`;
+        }
+      } else {
+        assistantMsg.content += `\n\n> Error: ${message}`;
+      }
     } finally {
       streamController.hideThinkingIndicator();
       streamController.finalizeCurrentTextBlock(assistantMsg);

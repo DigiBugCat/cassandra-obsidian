@@ -10,12 +10,14 @@ import type {
 } from '../../../core/types';
 import {
   appendThinkingContent,
+  clearSubagentBlocks,
   createThinkingBlock,
   createWriteEditBlock,
   finalizeThinkingBlock,
   finalizeWriteEditBlock,
   getToolName,
   getToolSummary,
+  handleSubagentEvent,
   isBlockedToolResult,
   renderToolCall,
   updateMcpToolInput,
@@ -89,12 +91,11 @@ export class StreamController {
       pendingTools: state.pendingTools.size,
     });
 
-    // Subagent events are deferred to a later phase.
+    // Subagent events — route to SubagentRenderer
     if (chunk.type === 'subagent_event') {
-      this.logger.debug('subagent_event — skipping (Phase 3)', {
-        parentToolUseId: chunk.parentToolUseId,
-        innerType: chunk.event.type,
-      });
+      if (state.currentContentEl) {
+        handleSubagentEvent(chunk.parentToolUseId, chunk.event, state.currentContentEl);
+      }
       this.scrollToBottom();
       return;
     }
@@ -504,6 +505,7 @@ export class StreamController {
     state.currentThinkingState = null;
     state.activeToolCallCount = 0;
     state.pendingTools.clear();
+    clearSubagentBlocks();
   }
 
   // ============================================

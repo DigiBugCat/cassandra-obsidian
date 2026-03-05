@@ -27,6 +27,7 @@ function makeSettings(overrides: Partial<CassandraSettings> = {}): CassandraSett
     thinkingBudget: 'medium',
     permissionMode: 'default',
     enableVaultRestriction: false,
+    mcpServersJson: '',
     systemPrompt: '',
     compactInstructions: '',
     persistentExternalContextPaths: [],
