@@ -43,6 +43,7 @@ export default class CassandraPlugin extends Plugin {
     return {
       settings: this.settings,
       vaultPath,
+      vaultName: this.app.vault.getName(),
     };
   }
 

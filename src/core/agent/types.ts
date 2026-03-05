@@ -17,6 +17,7 @@ import type {
 export interface AgentConfig {
   settings: CassandraSettings;
   vaultPath: string;
+  vaultName?: string;
 }
 
 /** Options for a single query. */
