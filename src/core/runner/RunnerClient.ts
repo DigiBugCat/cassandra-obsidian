@@ -257,7 +257,13 @@ export class RunnerClient extends EventEmitter {
     switch (frame.type) {
       case 'pong': break;
       case 'ack':
-        if (!frame.ok) log.warn('ack_error', { session_id: frame.session_id, error: frame.error });
+        if (!frame.ok) {
+          log.warn('ack_error', { session_id: frame.session_id, error: frame.error });
+          // Propagate failed acks as session errors so streaming state cleans up
+          if (frame.session_id) {
+            this.emit(`error:${frame.session_id}`, { message: frame.error || 'Request failed' });
+          }
+        }
         this.emit(`ack:${frame.request_id}`, frame);
         break;
       case 'subscribed':
