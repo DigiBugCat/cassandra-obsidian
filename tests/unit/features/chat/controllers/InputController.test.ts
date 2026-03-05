@@ -197,7 +197,7 @@ describe('InputController', () => {
 
       await controller.handleSend();
 
-      expect(service.query).toHaveBeenCalledWith('what is 2+2?');
+      expect(service.query).toHaveBeenCalledWith('what is 2+2?', undefined);
     });
 
     it('bumps streamGeneration before starting the stream', async () => {

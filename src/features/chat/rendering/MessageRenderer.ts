@@ -51,9 +51,22 @@ export class MessageRenderer {
     });
 
     if (msg.role === 'user') {
+      // Render attached images as inline thumbnails
+      if (msg.images && msg.images.length > 0) {
+        const imagesRow = contentEl.createDiv({ cls: 'cassandra-message-images' });
+        for (const img of msg.images) {
+          const thumb = imagesRow.createEl('img', {
+            cls: 'cassandra-message-image-thumb',
+            attr: { src: `data:${img.mediaType};base64,${img.data}`, alt: img.name },
+          });
+          thumb.style.maxWidth = '120px';
+          thumb.style.maxHeight = '120px';
+        }
+      }
+
       const text = msg.displayContent ?? msg.content;
       if (text) {
-        contentEl.setText(text);
+        contentEl.createDiv({ cls: 'cassandra-user-text', text });
       }
     }
     // Assistant content div is intentionally empty — StreamController populates it.

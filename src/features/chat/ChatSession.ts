@@ -18,7 +18,7 @@ import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
 import { ChatState } from './state';
-import { ComposerToolbar } from './ui';
+import { ComposerToolbar, ImageContextManager } from './ui';
 
 const log = createLogger('ChatSession');
 
@@ -40,6 +40,7 @@ export class ChatSession {
   private streamController: StreamController;
   private inputController: InputController;
   private toolbar: ComposerToolbar;
+  private imageManager: ImageContextManager;
 
   // Current conversation metadata
   private conversationId: string;
@@ -108,9 +109,18 @@ export class ChatSession {
 
     // ── Composer ──
     const composer = container.createEl('div', { cls: 'cassandra-composer' });
+
+    // Context row (image previews, hidden by default)
+    const contextRow = composer.createEl('div', { cls: 'cassandra-context-row' });
+
     this.inputEl = composer.createEl('textarea', {
       cls: 'cassandra-input',
       attr: { placeholder: 'Message Cassandra...', rows: '3' },
+    });
+
+    // Image context manager (paste/drop)
+    this.imageManager = new ImageContextManager(composer, contextRow, this.inputEl, {
+      onImagesChanged: () => { /* context row updates itself */ },
     });
 
     // Toolbar
@@ -174,6 +184,8 @@ export class ChatSession {
       getInputEl: () => this.inputEl,
       getSendBtn: () => null,
       getMessagesEl: () => this.messagesEl,
+      getImages: () => this.imageManager.getImages(),
+      clearImages: () => this.imageManager.clearImages(),
     });
 
     // Wire input events
@@ -587,6 +599,7 @@ export class ChatSession {
     this.saveSessionMetadata();
     this.clearProcessingTimer();
     this.toolbar.destroy();
+    this.imageManager.destroy();
     this.service?.cleanup();
     this.service = null;
     this.state.resetStreamingState();

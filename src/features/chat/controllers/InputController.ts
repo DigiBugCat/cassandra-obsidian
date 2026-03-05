@@ -1,6 +1,6 @@
 import type { AgentService } from '../../../core/agent';
 import { createLogger } from '../../../core/logging';
-import type { ChatMessage } from '../../../core/types';
+import type { ChatMessage, ImageAttachment } from '../../../core/types';
 import type { MessageRenderer } from '../rendering/MessageRenderer';
 import type { ChatState } from '../state';
 import type { StreamController } from './StreamController';
@@ -15,6 +15,8 @@ export interface InputControllerDeps {
   getInputEl: () => HTMLTextAreaElement | null;
   getSendBtn: () => HTMLElement | null;
   getMessagesEl: () => HTMLElement;
+  getImages?: () => ImageAttachment[];
+  clearImages?: () => void;
 }
 
 export class InputController {
@@ -45,10 +47,12 @@ export class InputController {
 
     const inputEl = this.deps.getInputEl();
     const prompt = inputEl?.value.trim() ?? '';
-    if (!prompt) return;
+    const images = this.deps.getImages?.() ?? [];
+    if (!prompt && images.length === 0) return;
 
-    // Clear input immediately
+    // Clear input and images immediately
     if (inputEl) inputEl.value = '';
+    this.deps.clearImages?.();
 
     // Transition to streaming state
     state.isStreaming = true;
@@ -60,6 +64,7 @@ export class InputController {
       role: 'user',
       content: prompt,
       timestamp: Date.now(),
+      images: images.length > 0 ? images : undefined,
     };
     state.addMessage(userMsg);
     renderer.addMessage(userMsg);
@@ -88,7 +93,7 @@ export class InputController {
     logger.debug('handleSend: starting stream', { prompt: prompt.slice(0, 60), gen });
 
     try {
-      const stream = service.query(prompt);
+      const stream = service.query(prompt, images.length > 0 ? images : undefined);
       for await (const chunk of stream) {
         // Discard events from a previous generation (e.g. after cancel + new send)
         if (state.streamGeneration !== gen) {

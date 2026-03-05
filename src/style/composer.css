@@ -15,6 +15,102 @@
   background: var(--background-primary);
 }
 
+/* ── Context row (image previews) ─────────────────────────────── */
+
+.cassandra-context-row {
+  display: none;
+  align-items: flex-start;
+  flex-shrink: 0;
+  padding: 6px 10px 0;
+  gap: 8px;
+}
+
+.cassandra-context-row.has-content {
+  display: flex;
+}
+
+.cassandra-image-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cassandra-image-thumb {
+  position: relative;
+  display: inline-flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.cassandra-image-thumb img {
+  display: block;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.cassandra-image-thumb-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cassandra-image-thumb:hover .cassandra-image-thumb-remove {
+  opacity: 1;
+}
+
+.cassandra-image-thumb-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Drop overlay ────────────────────────────────────────────── */
+
+.cassandra-drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.1);
+  border: 2px dashed var(--interactive-accent);
+  border-radius: 6px;
+  z-index: 10;
+  font-size: 13px;
+  color: var(--interactive-accent);
+  pointer-events: none;
+}
+
+/* ── Message image thumbnails ────────────────────────────────── */
+
+.cassandra-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.cassandra-message-image-thumb {
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  object-fit: cover;
+}
+
+.cassandra-user-text {
+  white-space: pre-wrap;
+}
+
 .cassandra-composer .cassandra-input {
   width: 100%;
   flex: 1 1 0;
