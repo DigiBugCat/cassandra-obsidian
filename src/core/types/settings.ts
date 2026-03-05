@@ -16,6 +16,7 @@ export interface CassandraSettings {
   runnerUrl: string;
   runnerAutoStart: boolean;
   runnerProjectPath: string;
+  runnerVaultName: string;
 
   // Model
   model: ClaudeModel;
@@ -41,6 +42,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerUrl: 'http://localhost:9080',
   runnerAutoStart: true,
   runnerProjectPath: '',
+  runnerVaultName: '',
 
   model: 'sonnet',
   thinkingBudget: 'medium',

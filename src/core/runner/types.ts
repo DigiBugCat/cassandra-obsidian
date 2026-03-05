@@ -8,6 +8,7 @@
 export interface RunnerSessionRequest {
   name?: string;
   workspace?: string;
+  vault?: string;
   message?: string;
   model?: string;
   systemPrompt?: string;

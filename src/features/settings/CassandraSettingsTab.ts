@@ -63,6 +63,19 @@ export class CassandraSettingsTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl)
+      .setName('Obsidian Sync vault name')
+      .setDesc('If set, the runner syncs this vault via Obsidian Sync instead of using a local workspace path')
+      .addText((text) =>
+        text
+          .setPlaceholder('Cassandra-Finance')
+          .setValue(this.plugin.settings.runnerVaultName)
+          .onChange(async (value) => {
+            this.plugin.settings.runnerVaultName = value;
+            await this.plugin.saveSettings();
+          }),
+      );
+
     // ── Model Defaults ──
     containerEl.createEl('h2', { text: 'Model Defaults' });
 

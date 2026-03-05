@@ -22,6 +22,7 @@ function makeSettings(overrides: Partial<CassandraSettings> = {}): CassandraSett
     runnerUrl: 'http://localhost:9080',
     runnerAutoStart: false,
     runnerProjectPath: '',
+    runnerVaultName: '',
     model: 'sonnet',
     thinkingBudget: 'medium',
     permissionMode: 'default',

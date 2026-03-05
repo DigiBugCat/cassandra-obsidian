@@ -249,7 +249,8 @@ export class RunnerService implements AgentService {
         const budgetConfig = THINKING_BUDGETS.find(b => b.value === settings.thinkingBudget);
 
         const req: RunnerSessionRequest = {
-          workspace: vaultPath,
+          workspace: settings.runnerVaultName ? undefined : vaultPath,
+          vault: settings.runnerVaultName || undefined,
           model: settings.model,
           systemPrompt: settings.systemPrompt || undefined,
           thinking: (budgetConfig?.tokens ?? 0) > 0,
