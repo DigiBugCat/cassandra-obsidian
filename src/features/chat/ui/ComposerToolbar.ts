@@ -11,7 +11,7 @@
 import { setIcon } from 'obsidian';
 
 import type { PermissionMode, ThinkingBudget, UsageInfo } from '../../../core/types';
-import { DEFAULT_CLAUDE_MODELS, THINKING_BUDGETS } from '../../../core/types';
+import { DEFAULT_CLAUDE_MODELS } from '../../../core/types';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -43,8 +43,7 @@ export class ComposerToolbar {
   // Sub-components
   private modelBtn: HTMLElement;
   private modelDropdown: HTMLElement;
-  private thinkingCurrent: HTMLElement;
-  private thinkingOptions: HTMLElement;
+  private thinkingToggle: HTMLElement;
   private tokenContainer: HTMLElement;
   private tokenContext: HTMLElement;
   private tokenOutput: HTMLElement;
@@ -64,12 +63,12 @@ export class ComposerToolbar {
     this.modelBtn = modelSelector.createEl('div', { cls: 'cassandra-model-btn' });
     this.modelDropdown = modelSelector.createEl('div', { cls: 'cassandra-model-dropdown' });
 
-    // ── Thinking selector ──
-    const thinkingSelector = this.el.createEl('div', { cls: 'cassandra-thinking-selector' });
-    thinkingSelector.createEl('span', { cls: 'cassandra-thinking-label-text', text: 'Thinking:' });
-    const thinkingGears = thinkingSelector.createEl('div', { cls: 'cassandra-thinking-gears' });
-    this.thinkingCurrent = thinkingGears.createEl('div', { cls: 'cassandra-thinking-current' });
-    this.thinkingOptions = thinkingGears.createEl('div', { cls: 'cassandra-thinking-options' });
+    // ── Thinking toggle (off ↔ medium) ──
+    this.thinkingToggle = this.el.createEl('div', { cls: 'cassandra-thinking-toggle' });
+    this.thinkingToggle.addEventListener('click', () => {
+      const next: ThinkingBudget = this.state.thinkingBudget === 'off' ? 'medium' : 'off';
+      callbacks.onThinkingChange(next);
+    });
 
     // ── Token count ──
     this.tokenContainer = this.el.createEl('div', { cls: 'cassandra-token-count' });
@@ -132,7 +131,7 @@ export class ComposerToolbar {
 
   private render(): void {
     this.renderModelSelector();
-    this.renderThinkingSelector();
+    this.renderThinkingToggle();
     this.renderTokenCount();
     this.renderVaultRestriction();
     this.renderPermissionToggle();
@@ -163,24 +162,12 @@ export class ComposerToolbar {
     }
   }
 
-  private renderThinkingSelector(): void {
-    const { thinkingBudget } = this.state;
-
-    const currentInfo = THINKING_BUDGETS.find(b => b.value === thinkingBudget);
-    this.thinkingCurrent.textContent = currentInfo?.label ?? 'Off';
-
-    this.thinkingOptions.empty();
-    for (const budget of [...THINKING_BUDGETS].reverse()) {
-      const gear = this.thinkingOptions.createEl('div', { cls: 'cassandra-thinking-gear' });
-      gear.textContent = budget.label;
-      gear.setAttribute('title', budget.tokens > 0 ? `${budget.tokens.toLocaleString()} tokens` : 'Disabled');
-      if (budget.value === thinkingBudget) gear.addClass('selected');
-
-      gear.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.callbacks.onThinkingChange(budget.value);
-      });
-    }
+  private renderThinkingToggle(): void {
+    const isOn = this.state.thinkingBudget !== 'off';
+    this.thinkingToggle.empty();
+    setIcon(this.thinkingToggle, 'brain');
+    this.thinkingToggle.toggleClass('is-active', isOn);
+    this.thinkingToggle.setAttribute('title', isOn ? 'Thinking: On (click to disable)' : 'Thinking: Off (click to enable)');
   }
 
   private renderTokenCount(): void {
