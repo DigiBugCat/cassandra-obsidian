@@ -533,15 +533,8 @@ export class ChatSession {
     this.toolbar.update({ isReady: false });
     this.statusEl.textContent = 'Reconnecting...';
 
-    // Try reconnecting to the existing session first (preserves context)
-    let ready = await this.service?.reconnect();
-
-    // If reconnect failed (session truly dead), create a new one
-    if (!ready) {
-      log.info('stale_session_creating_new');
-      this.service?.resetSession();
-      ready = await this.service?.ensureReady();
-    }
+    // Reconnect to the existing session (resumes stopped sessions via orchestrator)
+    const ready = await this.service?.reconnect();
 
     this.toolbar.update({ isReady: !!ready });
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';

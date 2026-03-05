@@ -184,23 +184,33 @@ export class RunnerService implements AgentService {
     this.setReady(false);
   }
 
-  /** Reconnect to the current session without destroying it. */
+  /** Reconnect to the current session. Resumes stopped sessions via the orchestrator. */
   async reconnect(): Promise<boolean> {
     if (!this.runnerSessionId) return false;
     const sessionId = this.runnerSessionId;
     try {
       if (!this.client.isConnected()) await this.client.connect();
 
-      // Verify the session still exists on the orchestrator
+      // Check session status on the orchestrator
+      let status: string;
       try {
         const session = await this.client.getSession(sessionId);
-        if (session.status === 'stopped' || session.status === 'error') {
-          log.info('reconnect_session_dead', { session_id: sessionId, status: session.status });
-          return false;
-        }
+        status = session.status;
       } catch {
         log.info('reconnect_session_not_found', { session_id: sessionId });
         return false;
+      }
+
+      // If stopped/error, ask the orchestrator to resume (respawn container with same session ID)
+      if (status === 'stopped' || status === 'error') {
+        log.info('reconnect_resuming_stopped_session', { session_id: sessionId, status });
+        try {
+          await this.client.resumeSession(sessionId);
+          log.info('reconnect_resume_success', { session_id: sessionId });
+        } catch (err) {
+          log.warn('reconnect_resume_failed', { session_id: sessionId, error: String(err) });
+          return false;
+        }
       }
 
       this.setupEventHandlers(sessionId);

@@ -76,6 +76,19 @@ export class RunnerClient extends EventEmitter {
     return resp.json;
   }
 
+  async resumeSession(id: string): Promise<{ session_id: string; resumed: boolean }> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/resume`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to resume session: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json;
+  }
+
   async forkSession(id: string, req: RunnerForkRequest): Promise<{ session_id: string }> {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/fork`,
