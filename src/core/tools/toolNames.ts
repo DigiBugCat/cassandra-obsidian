@@ -1,0 +1,10 @@
+export const TOOL_ASK_USER_QUESTION = 'AskUserQuestion' as const;
+export const TOOL_BASH = 'Bash' as const;
+export const TOOL_EDIT = 'Edit' as const;
+export const TOOL_GLOB = 'Glob' as const;
+export const TOOL_GREP = 'Grep' as const;
+export const TOOL_LS = 'LS' as const;
+export const TOOL_READ = 'Read' as const;
+export const TOOL_WEB_FETCH = 'WebFetch' as const;
+export const TOOL_WEB_SEARCH = 'WebSearch' as const;
+export const TOOL_WRITE = 'Write' as const;
