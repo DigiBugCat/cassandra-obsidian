@@ -2,18 +2,24 @@ import type { WorkspaceLeaf } from 'obsidian';
 import { Plugin } from 'obsidian';
 
 import type { AgentConfig } from './core/agent';
+import { SessionStorage, VaultFileAdapter } from './core/storage';
 import type { CassandraSettings } from './core/types';
 import { DEFAULT_SETTINGS } from './core/types';
 import { CassandraView, VIEW_TYPE_CASSANDRA } from './features/chat/CassandraView';
 
 export default class CassandraPlugin extends Plugin {
   settings: CassandraSettings = { ...DEFAULT_SETTINGS };
+  private sessionStorage: SessionStorage | null = null;
 
   async onload() {
     await this.loadSettings();
 
+    // Init storage
+    const adapter = new VaultFileAdapter(this.app);
+    this.sessionStorage = new SessionStorage(adapter);
+
     this.registerView(VIEW_TYPE_CASSANDRA, (leaf: WorkspaceLeaf) =>
-      new CassandraView(leaf, this.getAgentConfig(), (s) => this.persistSettings(s)),
+      new CassandraView(leaf, this.getAgentConfig(), (s) => this.persistSettings(s), this.sessionStorage!),
     );
 
     this.addRibbonIcon('bot', 'Open Cassandra', () => this.activateView());

@@ -93,6 +93,100 @@
   height: 16px;
 }
 
+/* History dropdown */
+.cassandra-history-container {
+  position: relative;
+}
+
+.cassandra-history-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: none;
+  padding: 4px;
+}
+
+.cassandra-history-dropdown.is-open {
+  display: block;
+}
+
+.cassandra-history-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cassandra-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+}
+
+.cassandra-history-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-history-item.is-active {
+  background: rgba(var(--interactive-accent-rgb, 72, 120, 220), 0.1);
+}
+
+.cassandra-history-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 20px;
+}
+
+.cassandra-history-item-preview {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cassandra-history-item-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+}
+
+.cassandra-history-item:hover .cassandra-history-item-delete {
+  opacity: 1;
+}
+
+.cassandra-history-item-delete:hover {
+  color: var(--text-error);
+}
+
+.cassandra-history-item-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* Messages — flex column with gap, chat-bubble alignment */
 .cassandra-messages {
   flex: 1;

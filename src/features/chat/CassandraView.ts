@@ -2,6 +2,7 @@ import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView } from 'obsidian';
 
 import type { AgentConfig } from '../../core/agent';
+import type { SessionStorage } from '../../core/storage';
 import type { CassandraSettings } from '../../core/types';
 import { ChatSession } from './ChatSession';
 
@@ -11,11 +12,18 @@ export class CassandraView extends ItemView {
   private config: AgentConfig;
   private session: ChatSession | null = null;
   private saveSettings?: (settings: CassandraSettings) => Promise<void>;
+  private sessionStorage?: SessionStorage;
 
-  constructor(leaf: WorkspaceLeaf, config: AgentConfig, saveSettings?: (settings: CassandraSettings) => Promise<void>) {
+  constructor(
+    leaf: WorkspaceLeaf,
+    config: AgentConfig,
+    saveSettings?: (settings: CassandraSettings) => Promise<void>,
+    sessionStorage?: SessionStorage,
+  ) {
     super(leaf);
     this.config = config;
     this.saveSettings = saveSettings;
+    this.sessionStorage = sessionStorage;
   }
 
   getViewType(): string { return VIEW_TYPE_CASSANDRA; }
@@ -30,6 +38,7 @@ export class CassandraView extends ItemView {
       component: this,
       containerEl: container,
       saveSettings: this.saveSettings,
+      sessionStorage: this.sessionStorage,
     });
   }
 

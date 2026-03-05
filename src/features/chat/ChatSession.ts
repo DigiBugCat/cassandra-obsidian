@@ -11,7 +11,8 @@ import { setIcon } from 'obsidian';
 import type { AgentConfig, AgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
-import type { CassandraSettings, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
+import type { SessionMetadata, SessionStorage } from '../../core/storage';
+import type { CassandraSettings, ConversationMeta, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
 import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
@@ -26,6 +27,7 @@ export interface ChatSessionDeps {
   component: Component;
   containerEl: HTMLElement;
   saveSettings?: (settings: CassandraSettings) => Promise<void>;
+  sessionStorage?: SessionStorage;
 }
 
 export class ChatSession {
@@ -38,6 +40,13 @@ export class ChatSession {
   private inputController: InputController;
   private toolbar: ComposerToolbar;
 
+  // Current conversation metadata
+  private conversationId: string;
+  private conversationTitle = 'New conversation';
+  private conversationCreatedAt: number;
+  private messageCount = 0;
+  private firstUserMessage = '';
+
   // DOM refs
   private messagesEl: HTMLElement;
   private inputEl: HTMLTextAreaElement;
@@ -45,13 +54,15 @@ export class ChatSession {
   // Header elements
   private processingIndicatorEl: HTMLElement;
   private processingLabelEl: HTMLElement;
-  private processingIconEl: HTMLElement;
   private statusEl: HTMLElement;
+  private historyDropdownEl: HTMLElement;
   private processingTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: ChatSessionDeps) {
     this.config = deps.config;
     this.deps = deps;
+    this.conversationId = crypto.randomUUID();
+    this.conversationCreatedAt = Date.now();
 
     // Build DOM
     const container = deps.containerEl;
@@ -68,20 +79,30 @@ export class ChatSession {
     // Processing indicator (center, hidden initially)
     this.processingIndicatorEl = header.createEl('div', { cls: 'cassandra-processing-indicator' });
     this.processingIndicatorEl.style.display = 'none';
-    this.processingIconEl = this.processingIndicatorEl.createEl('span', { cls: 'cassandra-processing-indicator-icon' });
-    setIcon(this.processingIconEl, 'loader');
+    const procIcon = this.processingIndicatorEl.createEl('span', { cls: 'cassandra-processing-indicator-icon' });
+    setIcon(procIcon, 'loader');
     this.processingLabelEl = this.processingIndicatorEl.createEl('span', { cls: 'cassandra-processing-indicator-label' });
 
     // Header actions (right)
     const headerActions = header.createEl('div', { cls: 'cassandra-header-actions' });
     this.statusEl = headerActions.createEl('span', { cls: 'cassandra-status', text: 'Connecting...' });
 
+    // History button + dropdown
+    const historyContainer = headerActions.createEl('div', { cls: 'cassandra-history-container' });
+    const historyBtn = historyContainer.createEl('div', { cls: 'cassandra-header-btn', attr: { 'aria-label': 'Chat history' } });
+    setIcon(historyBtn, 'history');
+    this.historyDropdownEl = historyContainer.createEl('div', { cls: 'cassandra-history-dropdown' });
+    historyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleHistoryDropdown();
+    });
+
     // New conversation button
     const newConvBtn = headerActions.createEl('div', { cls: 'cassandra-header-btn', attr: { 'aria-label': 'New conversation' } });
     setIcon(newConvBtn, 'square-pen');
     newConvBtn.addEventListener('click', () => this.handleNewConversation());
 
-    // Messages area
+    // ── Messages area ──
     this.messagesEl = container.createEl('div', { cls: 'cassandra-messages' });
 
     // ── Composer ──
@@ -120,6 +141,7 @@ export class ChatSession {
           this.statusEl.textContent = this.formatStatusText(usage);
         }
         this.toolbar.update({ usage });
+        this.saveSessionMetadata();
       },
     });
 
@@ -137,7 +159,7 @@ export class ChatSession {
       getSettings: () => this.config.settings,
     });
 
-    // InputController
+    // InputController — wrap handleSend to track messages
     this.inputController = new InputController({
       state: this.state,
       getService: () => this.service as AgentService | null,
@@ -148,7 +170,7 @@ export class ChatSession {
       getMessagesEl: () => this.messagesEl,
     });
 
-    // Wire input events (Enter=send, Escape=cancel, Shift+Enter=newline)
+    // Wire input events
     this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -163,6 +185,9 @@ export class ChatSession {
     // Auto-resize textarea
     this.inputEl.addEventListener('input', () => this.autoResize());
 
+    // Close history dropdown on outside click
+    document.addEventListener('click', () => this.closeHistoryDropdown());
+
     // Init service
     this.initService();
   }
@@ -171,7 +196,17 @@ export class ChatSession {
     if (this.state.isStreaming) {
       this.inputController.cancelStreaming();
     } else {
+      // Track message count for metadata
+      const prompt = this.inputEl.value.trim();
+      if (prompt) {
+        this.messageCount += 2; // user + assistant
+        if (!this.firstUserMessage) {
+          this.firstUserMessage = prompt.substring(0, 80);
+          this.conversationTitle = prompt.substring(0, 50) || 'New conversation';
+        }
+      }
       this.inputController.handleSend();
+      this.saveSessionMetadata();
     }
   }
 
@@ -183,7 +218,6 @@ export class ChatSession {
       this.processingIndicatorEl.classList.add('is-streaming');
       this.statusEl.style.display = 'none';
       this.updateProcessingLabel();
-      // Start timer to update label every second
       this.clearProcessingTimer();
       this.processingTimerInterval = setInterval(() => this.updateProcessingLabel(), 1000);
     } else {
@@ -198,20 +232,17 @@ export class ChatSession {
   private updateProcessingLabel(): void {
     const parts: string[] = [];
     const toolCount = this.state.activeToolCallCount;
-
     if (toolCount > 0) {
       parts.push(`Processing ${toolCount === 1 ? '1 tool' : `${toolCount} tools`}`);
     } else {
       parts.push('Processing');
     }
-
     if (this.state.responseStartTime) {
       const elapsed = Math.max(0, Math.floor((performance.now() - this.state.responseStartTime) / 1000));
       const min = Math.floor(elapsed / 60);
       const sec = elapsed % 60;
       parts.push(`${min}:${String(sec).padStart(2, '0')}`);
     }
-
     this.processingLabelEl.textContent = parts.join(' - ');
   }
 
@@ -222,28 +253,157 @@ export class ChatSession {
     }
   }
 
+  // ── History dropdown ─────────────────────────────────────────
+
+  private async toggleHistoryDropdown(): Promise<void> {
+    if (this.historyDropdownEl.classList.contains('is-open')) {
+      this.closeHistoryDropdown();
+      return;
+    }
+    await this.renderHistoryDropdown();
+    this.historyDropdownEl.classList.add('is-open');
+  }
+
+  private closeHistoryDropdown(): void {
+    this.historyDropdownEl.classList.remove('is-open');
+  }
+
+  private async renderHistoryDropdown(): Promise<void> {
+    this.historyDropdownEl.empty();
+    const storage = this.deps.sessionStorage;
+    if (!storage) {
+      this.historyDropdownEl.createEl('div', { cls: 'cassandra-history-empty', text: 'No history available' });
+      return;
+    }
+
+    const metas = await storage.list();
+    if (metas.length === 0) {
+      this.historyDropdownEl.createEl('div', { cls: 'cassandra-history-empty', text: 'No conversations yet' });
+      return;
+    }
+
+    for (const meta of metas.slice(0, 20)) {
+      const item = this.historyDropdownEl.createEl('div', {
+        cls: `cassandra-history-item${meta.id === this.conversationId ? ' is-active' : ''}`,
+      });
+      const titleEl = item.createEl('div', { cls: 'cassandra-history-item-title', text: meta.title });
+      titleEl.setAttribute('title', meta.title);
+      const previewEl = item.createEl('div', { cls: 'cassandra-history-item-preview' });
+      previewEl.textContent = meta.preview || 'Empty conversation';
+
+      const deleteBtn = item.createEl('div', { cls: 'cassandra-history-item-delete' });
+      setIcon(deleteBtn, 'x');
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await storage.delete(meta.id);
+        await this.renderHistoryDropdown();
+      });
+
+      item.addEventListener('click', () => {
+        this.closeHistoryDropdown();
+        this.restoreSession(meta);
+      });
+    }
+  }
+
+  private async restoreSession(meta: ConversationMeta): Promise<void> {
+    if (meta.id === this.conversationId) return;
+
+    const storage = this.deps.sessionStorage;
+    if (!storage) return;
+    const sessionMeta = await storage.load(meta.id);
+    if (!sessionMeta || !sessionMeta.runnerSessionId) {
+      log.warn('restore_failed', { id: meta.id, reason: 'no runner session id' });
+      return;
+    }
+
+    // Save current session before switching
+    await this.saveSessionMetadata();
+
+    // Reset state
+    this.state.resetStreamingState();
+    this.state.clearMaps();
+    this.messagesEl.empty();
+
+    // Adopt new conversation identity
+    this.conversationId = meta.id;
+    this.conversationTitle = meta.title;
+    this.conversationCreatedAt = meta.createdAt;
+    this.messageCount = meta.messageCount;
+    this.firstUserMessage = meta.preview;
+
+    // Re-attach to the runner session
+    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
+    this.statusEl.textContent = 'Reconnecting...';
+
+    this.service?.setSessionId(sessionMeta.runnerSessionId);
+
+    // Wait for ready
+    this.service?.onReadyStateChange((ready) => {
+      if (ready) {
+        this.toolbar.update({ isReady: true });
+        this.statusEl.textContent = this.formatStatusText();
+      }
+    });
+
+    this.inputEl.focus();
+  }
+
   // ── New conversation ─────────────────────────────────────────
 
   private async handleNewConversation(): Promise<void> {
-    // Clean up current service
+    // Save current session
+    await this.saveSessionMetadata();
+
+    // Reset runner session
     this.service?.resetSession();
     this.state.resetStreamingState();
     this.state.clearMaps();
-
-    // Clear messages
     this.messagesEl.empty();
 
-    // Clear toolbar state
-    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
+    // New conversation identity
+    this.conversationId = crypto.randomUUID();
+    this.conversationTitle = 'New conversation';
+    this.conversationCreatedAt = Date.now();
+    this.messageCount = 0;
+    this.firstUserMessage = '';
 
     // Re-init
+    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
     this.statusEl.textContent = 'Connecting...';
     const ready = await this.service?.ensureReady();
     this.toolbar.update({ isReady: !!ready });
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
 
-    // Focus input
+    // Save the new session immediately
+    await this.saveSessionMetadata();
+
     this.inputEl.focus();
+  }
+
+  // ── Session metadata persistence ─────────────────────────────
+
+  private async saveSessionMetadata(): Promise<void> {
+    const storage = this.deps.sessionStorage;
+    if (!storage) return;
+
+    const meta: SessionMetadata = {
+      id: this.conversationId,
+      title: this.conversationTitle,
+      createdAt: this.conversationCreatedAt,
+      updatedAt: Date.now(),
+      lastResponseAt: this.state.usage ? Date.now() : undefined,
+      runnerSessionId: this.service?.getSessionId() ?? null,
+      usage: this.state.usage ?? undefined,
+      messageCount: this.messageCount,
+      preview: this.firstUserMessage || 'New conversation',
+    };
+
+    try {
+      await storage.save(meta);
+    } catch (err) {
+      log.warn('save_metadata_failed', { error: String(err) });
+    }
   }
 
   // ── Settings handlers ──────────────────────────────────────────
@@ -283,6 +443,7 @@ export class ChatSession {
     const ready = await this.service?.ensureReady();
     this.toolbar.update({ isReady: !!ready });
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+    await this.saveSessionMetadata();
   }
 
   private persistSettings(): void {
@@ -295,9 +456,13 @@ export class ChatSession {
     try {
       this.service = new RunnerService(this.config);
 
-      // Sync permission mode from runner (e.g. when EnterPlanMode fires)
       this.service.setPermissionModeSyncCallback((mode) => {
         this.toolbar.update({ permissionMode: mode as PermissionMode });
+      });
+
+      this.service.setOnSessionCreated((sessionId) => {
+        log.info('session_created_callback', { sessionId });
+        this.saveSessionMetadata();
       });
 
       const ready = await this.service.ensureReady();
@@ -306,6 +471,9 @@ export class ChatSession {
       if (!ready) {
         log.warn('service_not_ready');
       }
+
+      // Save metadata now that we have a runner session id
+      await this.saveSessionMetadata();
     } catch (err) {
       log.error('service_init_failed', { error: err instanceof Error ? err.message : String(err) });
       this.statusEl.textContent = 'Connection failed';
@@ -343,6 +511,7 @@ export class ChatSession {
   }
 
   cleanup(): void {
+    this.saveSessionMetadata();
     this.clearProcessingTimer();
     this.toolbar.destroy();
     this.service?.cleanup();
