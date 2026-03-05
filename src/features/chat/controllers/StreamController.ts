@@ -1,64 +1,537 @@
-/**
- * StreamController — owns all stream event dispatch and DOM updates during a streaming turn.
- *
- * NOTE: This is a stub. Full implementation is tracked in Phase 5 (task #7).
- * The interface below is stable — InputController depends on it.
- */
-
-import type { ChatMessage, StreamEvent } from '../../../core/types';
+import { createLogger } from '../../../core/logging';
+import type {
+  CassandraSettings,
+  ChatMessage,
+  DiffLine,
+  DiffStats,
+  StreamEvent,
+  ToolCallInfo,
+  ToolDiffData,
+} from '../../../core/types';
+import {
+  appendThinkingContent,
+  createThinkingBlock,
+  createWriteEditBlock,
+  finalizeThinkingBlock,
+  finalizeWriteEditBlock,
+  getToolName,
+  getToolSummary,
+  isBlockedToolResult,
+  renderToolCall,
+  updateMcpToolInput,
+  updateToolCallResult,
+  updateWriteEditWithDiff,
+} from '../rendering';
 import type { MessageRenderer } from '../rendering/MessageRenderer';
 import type { ChatState } from '../state';
+
+// ── Flavor texts displayed while waiting for a model response ──
+
+const FLAVOR_TEXTS = [
+  'Thinking...',
+  'Working on it...',
+  'Processing...',
+  'Analyzing...',
+  'Considering...',
+  'Reasoning...',
+  'Exploring...',
+  'Evaluating...',
+];
+
+// ── Small pure helpers ──
+
+function isWriteEditTool(name: string): boolean {
+  return name === 'Write' || name === 'Edit';
+}
+
+function isMcpTool(name: string): boolean {
+  return name.startsWith('mcp__');
+}
+
+function formatDurationMmSs(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+// ── Dependency contract ──
 
 export interface StreamControllerDeps {
   state: ChatState;
   renderer: MessageRenderer;
   getMessagesEl: () => HTMLElement;
+  getSettings: () => CassandraSettings;
 }
 
+// ── StreamController ──────────────────────────────────────────────────
+
 export class StreamController {
-  constructor(_deps: StreamControllerDeps) {}
+  private deps: StreamControllerDeps;
+  private readonly logger = createLogger('StreamController');
 
-  // ── Called by InputController ──────────────────────────────────────
+  /** Debounce before the thinking indicator appears (ms). */
+  private static readonly THINKING_INDICATOR_DELAY = 400;
 
-  /** Show the animated "thinking" indicator in the messages list. */
-  showThinkingIndicator(): void {
-    // TODO: implement in Phase 5
+  constructor(deps: StreamControllerDeps) {
+    this.deps = deps;
   }
 
-  /** Hide the "thinking" indicator. */
+  // ============================================
+  // Stream Event Dispatch
+  // ============================================
+
+  async handleStreamEvent(chunk: StreamEvent, msg: ChatMessage): Promise<void> {
+    const { state } = this.deps;
+
+    this.logger.debug('handle stream event', {
+      type: chunk.type,
+      messageId: msg.id,
+      pendingTools: state.pendingTools.size,
+    });
+
+    // Subagent events are deferred to a later phase.
+    if (chunk.type === 'subagent_event') {
+      this.logger.debug('subagent_event — skipping (Phase 3)', {
+        parentToolUseId: chunk.parentToolUseId,
+        innerType: chunk.event.type,
+      });
+      this.scrollToBottom();
+      return;
+    }
+
+    switch (chunk.type) {
+      case 'text': {
+        this.flushPendingTools();
+        if (state.currentThinkingState) this.finalizeCurrentThinkingBlock(msg);
+        msg.content += chunk.content;
+        await this.appendText(chunk.content);
+        break;
+      }
+
+      case 'thinking': {
+        this.flushPendingTools();
+        if (state.currentTextEl) this.finalizeCurrentTextBlock(msg);
+        await this.appendThinking(chunk.content);
+        break;
+      }
+
+      case 'tool_use': {
+        if (state.currentThinkingState) this.finalizeCurrentThinkingBlock(msg);
+        this.finalizeCurrentTextBlock(msg);
+        this.handleRegularToolUse(chunk, msg);
+        break;
+      }
+
+      case 'tool_input_update': {
+        const existing = msg.toolCalls?.find(tc => tc.id === chunk.id);
+        if (existing) {
+          existing.input = { ...existing.input, ...chunk.input };
+          const toolEl = state.toolCallElements.get(chunk.id);
+          if (toolEl) {
+            const nameEl =
+              (toolEl.querySelector('.cassandra-tool-name') as HTMLElement | null) ??
+              (toolEl.querySelector('.cassandra-write-edit-name') as HTMLElement | null);
+            if (nameEl) nameEl.setText(getToolName(existing.name, existing.input));
+            const summaryEl =
+              (toolEl.querySelector('.cassandra-tool-summary') as HTMLElement | null) ??
+              (toolEl.querySelector('.cassandra-write-edit-summary') as HTMLElement | null);
+            if (summaryEl) summaryEl.setText(getToolSummary(existing.name, existing.input));
+            if (isMcpTool(existing.name)) {
+              updateMcpToolInput(chunk.id, existing, state.toolCallElements);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'tool_result': {
+        this.logger.debug('tool_result', { id: chunk.id, isError: chunk.isError === true });
+        this.handleToolResult(chunk, msg);
+        break;
+      }
+
+      case 'usage': {
+        state.usage = chunk.usage;
+        break;
+      }
+
+      case 'done': {
+        this.flushPendingTools();
+        if (state.currentThinkingState) this.finalizeCurrentThinkingBlock(msg);
+        this.finalizeCurrentTextBlock(msg);
+        break;
+      }
+
+      case 'error': {
+        this.flushPendingTools();
+        await this.appendText(`\n\n**Error:** ${chunk.content}`);
+        break;
+      }
+
+      case 'blocked': {
+        this.flushPendingTools();
+        await this.appendText(`\n\n**Blocked:** ${chunk.content}`);
+        break;
+      }
+
+      case 'compact_boundary': {
+        this.flushPendingTools();
+        if (state.currentThinkingState) this.finalizeCurrentThinkingBlock(msg);
+        this.finalizeCurrentTextBlock(msg);
+        msg.contentBlocks = msg.contentBlocks ?? [];
+        msg.contentBlocks.push({ type: 'compact_boundary' });
+        this.renderCompactBoundary();
+        break;
+      }
+
+      // SDK session UUID events — no UI action needed.
+      case 'sdk_assistant_uuid':
+      case 'sdk_user_uuid':
+      case 'sdk_user_sent':
+        break;
+
+      // Hook events — deferred to a later phase.
+      case 'hook_started':
+      case 'hook_progress':
+      case 'hook_response':
+        this.logger.debug('hook event — skipping (Phase 3)', { type: chunk.type });
+        break;
+    }
+
+    this.scrollToBottom();
+  }
+
+  // ============================================
+  // Tool Use Handling
+  // ============================================
+
+  /**
+   * Buffers non-MCP tool_use events; renders MCP tools immediately so users
+   * see them in flight. The buffer is flushed when a different content type
+   * (text, thinking) arrives or the stream ends.
+   */
+  private handleRegularToolUse(
+    chunk: { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> },
+    msg: ChatMessage
+  ): void {
+    const { state } = this.deps;
+    const mcpTool = isMcpTool(chunk.name);
+
+    // Streaming input merge — update an already-registered tool call.
+    const existing = msg.toolCalls?.find(tc => tc.id === chunk.id);
+    if (existing) {
+      const newInput = chunk.input ?? {};
+      if (Object.keys(newInput).length > 0) {
+        existing.input = { ...existing.input, ...newInput };
+        const toolEl = state.toolCallElements.get(chunk.id);
+        if (toolEl) {
+          const nameEl =
+            (toolEl.querySelector('.cassandra-tool-name') as HTMLElement | null) ??
+            (toolEl.querySelector('.cassandra-write-edit-name') as HTMLElement | null);
+          if (nameEl) nameEl.setText(getToolName(existing.name, existing.input));
+          const summaryEl =
+            (toolEl.querySelector('.cassandra-tool-summary') as HTMLElement | null) ??
+            (toolEl.querySelector('.cassandra-write-edit-summary') as HTMLElement | null);
+          if (summaryEl) summaryEl.setText(getToolSummary(existing.name, existing.input));
+          if (mcpTool) updateMcpToolInput(chunk.id, existing, state.toolCallElements);
+        }
+      }
+      return;
+    }
+
+    // First occurrence — register and buffer (or render immediately for MCP).
+    const toolCall: ToolCallInfo = {
+      id: chunk.id,
+      name: chunk.name,
+      input: chunk.input,
+      status: mcpTool ? 'queued' : 'running',
+      isExpanded: false,
+    };
+
+    msg.toolCalls = msg.toolCalls ?? [];
+    msg.toolCalls.push(toolCall);
+    state.activeToolCallCount++;
+
+    msg.contentBlocks = msg.contentBlocks ?? [];
+    msg.contentBlocks.push({ type: 'tool_use', toolId: chunk.id });
+
+    if (state.currentContentEl) {
+      if (mcpTool) {
+        renderToolCall(state.currentContentEl, toolCall, state.toolCallElements);
+      } else {
+        state.pendingTools.set(chunk.id, { toolCall, parentEl: state.currentContentEl });
+      }
+      this.showThinkingIndicator();
+    }
+  }
+
+  /** Renders all buffered tool calls in insertion order, then clears the buffer. */
+  private flushPendingTools(): void {
+    const { state } = this.deps;
+    if (state.pendingTools.size === 0) return;
+    for (const toolId of state.pendingTools.keys()) {
+      this.renderPendingTool(toolId);
+    }
+    state.pendingTools.clear();
+  }
+
+  /**
+   * Renders one buffered tool call.
+   * Write/Edit tools get a diff-capable block; all others use the standard renderer.
+   */
+  private renderPendingTool(toolId: string): void {
+    const { state } = this.deps;
+    const pending = state.pendingTools.get(toolId);
+    if (!pending) return;
+    const { toolCall, parentEl } = pending;
+    if (!parentEl) return;
+
+    if (isWriteEditTool(toolCall.name)) {
+      const weState = createWriteEditBlock(parentEl, toolCall);
+      state.writeEditStates.set(toolId, weState);
+      state.toolCallElements.set(toolId, weState.wrapperEl);
+    } else {
+      renderToolCall(parentEl, toolCall, state.toolCallElements);
+    }
+
+    state.pendingTools.delete(toolId);
+  }
+
+  private handleToolResult(
+    chunk: { type: 'tool_result'; id: string; content: string; isError?: boolean; meta?: unknown },
+    msg: ChatMessage
+  ): void {
+    const { state } = this.deps;
+
+    // Flush the specific tool before applying its result.
+    if (state.pendingTools.has(chunk.id)) {
+      this.renderPendingTool(chunk.id);
+    }
+
+    const toolCall = msg.toolCalls?.find(tc => tc.id === chunk.id);
+    if (toolCall) {
+      const isBlocked = isBlockedToolResult(chunk.content, chunk.isError);
+      toolCall.status = chunk.isError ? 'error' : isBlocked ? 'blocked' : 'completed';
+      toolCall.result = chunk.content;
+
+      const weState = state.writeEditStates.get(chunk.id);
+      if (weState && isWriteEditTool(toolCall.name)) {
+        if (!chunk.isError && !isBlocked) {
+          const diffData = extractDiffDataFromMeta(chunk.meta, toolCall);
+          if (diffData) {
+            toolCall.diffData = diffData;
+            updateWriteEditWithDiff(weState, diffData);
+          }
+        }
+        finalizeWriteEditBlock(weState, !!(chunk.isError || isBlocked));
+      } else {
+        updateToolCallResult(chunk.id, toolCall, state.toolCallElements);
+      }
+    }
+
+    if (state.activeToolCallCount > 0) state.activeToolCallCount--;
+    this.showThinkingIndicator();
+  }
+
+  // ============================================
+  // Text Block Management
+  // ============================================
+
+  async appendText(text: string): Promise<void> {
+    const { state, renderer } = this.deps;
+    if (!state.currentContentEl) return;
+
+    this.hideThinkingIndicator();
+
+    if (!state.currentTextEl) {
+      state.currentTextEl = state.currentContentEl.createDiv({ cls: 'cassandra-text-block' });
+      state.currentTextContent = '';
+    }
+
+    state.currentTextContent += text;
+    await renderer.renderContent(state.currentTextEl, state.currentTextContent);
+  }
+
+  finalizeCurrentTextBlock(msg?: ChatMessage): void {
+    const { state, renderer } = this.deps;
+    if (msg && state.currentTextContent) {
+      msg.contentBlocks = msg.contentBlocks ?? [];
+      msg.contentBlocks.push({ type: 'text', content: state.currentTextContent });
+      if (state.currentTextEl) {
+        renderer.addTextCopyButton(state.currentTextEl, state.currentTextContent);
+      }
+    }
+    state.currentTextEl = null;
+    state.currentTextContent = '';
+  }
+
+  // ============================================
+  // Thinking Block Management
+  // ============================================
+
+  async appendThinking(content: string): Promise<void> {
+    const { state, renderer } = this.deps;
+    if (!state.currentContentEl) return;
+
+    this.hideThinkingIndicator();
+
+    if (!state.currentThinkingState) {
+      state.currentThinkingState = createThinkingBlock(
+        state.currentContentEl,
+        (el, md) => renderer.renderContent(el, md)
+      );
+    }
+
+    await appendThinkingContent(
+      state.currentThinkingState,
+      content,
+      (el, md) => renderer.renderContent(el, md)
+    );
+  }
+
+  finalizeCurrentThinkingBlock(msg?: ChatMessage): void {
+    const { state } = this.deps;
+    if (!state.currentThinkingState) return;
+
+    const durationSeconds = finalizeThinkingBlock(state.currentThinkingState);
+
+    if (msg && state.currentThinkingState.content) {
+      msg.contentBlocks = msg.contentBlocks ?? [];
+      msg.contentBlocks.push({
+        type: 'thinking',
+        content: state.currentThinkingState.content,
+        durationSeconds,
+      });
+    }
+
+    state.currentThinkingState = null;
+  }
+
+  // ============================================
+  // Thinking Indicator
+  // ============================================
+
+  /**
+   * Schedules a flavor text indicator after a debounce delay.
+   * The indicator is suppressed if a content event arrives before the timeout fires,
+   * keeping the UI clean during rapid streaming turns.
+   */
+  showThinkingIndicator(overrideText?: string): void {
+    const { state } = this.deps;
+    if (!state.currentContentEl) return;
+
+    if (state.thinkingIndicatorTimeout) {
+      clearTimeout(state.thinkingIndicatorTimeout);
+      state.thinkingIndicatorTimeout = null;
+    }
+
+    // Suppress while the model's own <thinking> block is active.
+    if (state.currentThinkingState) return;
+
+    // Already visible — re-anchor to bottom of content.
+    if (state.thinkingEl) {
+      state.currentContentEl.appendChild(state.thinkingEl);
+      return;
+    }
+
+    state.thinkingIndicatorTimeout = setTimeout(() => {
+      state.thinkingIndicatorTimeout = null;
+      if (!state.currentContentEl || state.thinkingEl || state.currentThinkingState) return;
+
+      state.thinkingEl = state.currentContentEl.createDiv({ cls: 'cassandra-thinking' });
+
+      const text = overrideText ?? FLAVOR_TEXTS[Math.floor(Math.random() * FLAVOR_TEXTS.length)];
+      state.thinkingEl.createSpan({ text });
+
+      const timerSpan = state.thinkingEl.createSpan({ cls: 'cassandra-thinking-hint' });
+
+      const updateTimer = () => {
+        if (!state.responseStartTime) return;
+        if (!timerSpan.isConnected) { state.clearFlavorTimerInterval(); return; }
+        const elapsed = Math.floor((performance.now() - state.responseStartTime) / 1000);
+        timerSpan.setText(` (esc to interrupt · ${formatDurationMmSs(elapsed)})`);
+      };
+
+      updateTimer();
+      state.clearFlavorTimerInterval();
+      state.flavorTimerInterval = setInterval(updateTimer, 1000);
+    }, StreamController.THINKING_INDICATOR_DELAY);
+  }
+
+  /** Cancels pending show timeout and removes the indicator element from the DOM. */
   hideThinkingIndicator(): void {
-    // TODO: implement in Phase 5
+    const { state } = this.deps;
+
+    if (state.thinkingIndicatorTimeout) {
+      clearTimeout(state.thinkingIndicatorTimeout);
+      state.thinkingIndicatorTimeout = null;
+    }
+
+    state.clearFlavorTimerInterval();
+
+    if (state.thinkingEl) {
+      state.thinkingEl.remove();
+      state.thinkingEl = null;
+    }
   }
 
-  /**
-   * Route a single stream event to the appropriate renderer.
-   * Called in the async for-await loop inside InputController.handleSend().
-   */
-  async handleStreamEvent(_chunk: StreamEvent, _msg: ChatMessage): Promise<void> {
-    // TODO: implement in Phase 5
+  // ============================================
+  // Compact Boundary
+  // ============================================
+
+  private renderCompactBoundary(): void {
+    const { state } = this.deps;
+    if (!state.currentContentEl) return;
+    this.hideThinkingIndicator();
+    const el = state.currentContentEl.createDiv({ cls: 'cassandra-compact-boundary' });
+    el.createSpan({ cls: 'cassandra-compact-boundary-label', text: 'Conversation compacted' });
   }
 
-  /**
-   * Flush and finalize the in-progress markdown text block for msg.
-   * Called in the finally block of handleSend().
-   */
-  finalizeCurrentTextBlock(_msg: ChatMessage): void {
-    // TODO: implement in Phase 5
-  }
+  // ============================================
+  // Reset
+  // ============================================
 
-  /**
-   * Flush and finalize the in-progress thinking block for msg.
-   * Called in the finally block of handleSend().
-   */
-  finalizeCurrentThinkingBlock(_msg: ChatMessage): void {
-    // TODO: implement in Phase 5
-  }
-
-  /**
-   * Reset all per-turn streaming state (text buffer, thinking state, tool maps).
-   * Called after each streaming turn completes or is cancelled.
-   */
   resetStreamingState(): void {
-    // TODO: implement in Phase 5
+    const { state } = this.deps;
+    this.hideThinkingIndicator();
+    state.currentContentEl = null;
+    state.currentTextEl = null;
+    state.currentTextContent = '';
+    state.currentThinkingState = null;
+    state.activeToolCallCount = 0;
+    state.pendingTools.clear();
   }
+
+  // ============================================
+  // Scroll
+  // ============================================
+
+  private scrollToBottom(): void {
+    const { state } = this.deps;
+    if (!state.autoScrollEnabled) return;
+    if (!(this.deps.getSettings().enableAutoScroll ?? true)) return;
+    const messagesEl = this.deps.getMessagesEl();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
+
+// ── Diff data extraction from runner protocol meta payload ──
+
+function extractDiffDataFromMeta(meta: unknown, toolCall: ToolCallInfo): ToolDiffData | null {
+  if (!meta || typeof meta !== 'object') return null;
+
+  const m = meta as Record<string, unknown>;
+  const raw = m['diffData'] ?? m['diff_data'];
+  if (!raw || typeof raw !== 'object') return null;
+
+  const r = raw as Record<string, unknown>;
+  const filePath =
+    (r['filePath'] as string | undefined) ??
+    (toolCall.input.file_path as string | undefined) ??
+    '';
+  const diffLines = Array.isArray(r['diffLines']) ? (r['diffLines'] as DiffLine[]) : null;
+  const stats = r['stats'];
+  if (!diffLines || !stats || typeof stats !== 'object') return null;
+
+  return { filePath, diffLines, stats: stats as DiffStats };
 }
