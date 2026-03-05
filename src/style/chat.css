@@ -2,21 +2,95 @@
 .cassandra-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 0 12px 12px 12px;
+  flex-shrink: 0;
+}
+
+.cassandra-title-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .cassandra-logo {
   font-weight: 600;
-  font-size: var(--font-ui-medium);
+  font-size: 14px;
+}
+
+/* Processing indicator pill */
+.cassandra-processing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(42vw, 300px);
+  padding: 3px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  margin-left: 12px;
+}
+
+.cassandra-processing-indicator.is-streaming {
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.cassandra-processing-indicator-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.cassandra-processing-indicator-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cassandra-processing-indicator.is-streaming .cassandra-processing-indicator-icon svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.cassandra-processing-indicator-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Header actions (right side) */
+.cassandra-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-inline-start: auto;
 }
 
 .cassandra-status {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   font-family: var(--font-monospace);
+}
+
+.cassandra-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: color 0.15s ease;
+}
+
+.cassandra-header-btn:hover {
+  color: var(--text-normal);
+}
+
+.cassandra-header-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Messages — flex column with gap, chat-bubble alignment */

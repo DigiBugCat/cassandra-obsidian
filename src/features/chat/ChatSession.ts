@@ -6,6 +6,7 @@
  */
 
 import type { App, Component } from 'obsidian';
+import { setIcon } from 'obsidian';
 
 import type { AgentConfig, AgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
@@ -40,7 +41,13 @@ export class ChatSession {
   // DOM refs
   private messagesEl: HTMLElement;
   private inputEl: HTMLTextAreaElement;
+
+  // Header elements
+  private processingIndicatorEl: HTMLElement;
+  private processingLabelEl: HTMLElement;
+  private processingIconEl: HTMLElement;
   private statusEl: HTMLElement;
+  private processingTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: ChatSessionDeps) {
     this.config = deps.config;
@@ -51,15 +58,33 @@ export class ChatSession {
     container.empty();
     container.addClass('cassandra-container');
 
-    // Header
+    // ── Header ──
     const header = container.createEl('div', { cls: 'cassandra-header' });
-    header.createEl('span', { cls: 'cassandra-logo', text: 'Cassandra' });
-    this.statusEl = header.createEl('span', { cls: 'cassandra-status', text: 'Connecting...' });
+
+    // Title slot (left)
+    const titleSlot = header.createEl('div', { cls: 'cassandra-title-slot' });
+    titleSlot.createEl('span', { cls: 'cassandra-logo', text: 'Cassandra' });
+
+    // Processing indicator (center, hidden initially)
+    this.processingIndicatorEl = header.createEl('div', { cls: 'cassandra-processing-indicator' });
+    this.processingIndicatorEl.style.display = 'none';
+    this.processingIconEl = this.processingIndicatorEl.createEl('span', { cls: 'cassandra-processing-indicator-icon' });
+    setIcon(this.processingIconEl, 'loader');
+    this.processingLabelEl = this.processingIndicatorEl.createEl('span', { cls: 'cassandra-processing-indicator-label' });
+
+    // Header actions (right)
+    const headerActions = header.createEl('div', { cls: 'cassandra-header-actions' });
+    this.statusEl = headerActions.createEl('span', { cls: 'cassandra-status', text: 'Connecting...' });
+
+    // New conversation button
+    const newConvBtn = headerActions.createEl('div', { cls: 'cassandra-header-btn', attr: { 'aria-label': 'New conversation' } });
+    setIcon(newConvBtn, 'square-pen');
+    newConvBtn.addEventListener('click', () => this.handleNewConversation());
 
     // Messages area
     this.messagesEl = container.createEl('div', { cls: 'cassandra-messages' });
 
-    // Composer wrapper
+    // ── Composer ──
     const composer = container.createEl('div', { cls: 'cassandra-composer' });
     this.inputEl = composer.createEl('textarea', {
       cls: 'cassandra-input',
@@ -87,7 +112,7 @@ export class ChatSession {
     // State with callbacks
     this.state = new ChatState({
       onStreamingStateChanged: (isStreaming) => {
-        this.statusEl.textContent = isStreaming ? 'Streaming...' : this.formatStatusText();
+        this.updateProcessingIndicator(isStreaming);
         this.toolbar.update({ isStreaming });
       },
       onUsageChanged: (usage) => {
@@ -119,11 +144,11 @@ export class ChatSession {
       streamController: this.streamController,
       renderer: this.renderer,
       getInputEl: () => this.inputEl,
-      getSendBtn: () => null, // send button is now in the toolbar
+      getSendBtn: () => null,
       getMessagesEl: () => this.messagesEl,
     });
 
-    // Wire input events (matches Claudian: Enter=send, Escape=cancel, Shift+Enter=newline)
+    // Wire input events (Enter=send, Escape=cancel, Shift+Enter=newline)
     this.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -148,6 +173,77 @@ export class ChatSession {
     } else {
       this.inputController.handleSend();
     }
+  }
+
+  // ── Processing indicator ─────────────────────────────────────
+
+  private updateProcessingIndicator(isStreaming: boolean): void {
+    if (isStreaming) {
+      this.processingIndicatorEl.style.display = '';
+      this.processingIndicatorEl.classList.add('is-streaming');
+      this.statusEl.style.display = 'none';
+      this.updateProcessingLabel();
+      // Start timer to update label every second
+      this.clearProcessingTimer();
+      this.processingTimerInterval = setInterval(() => this.updateProcessingLabel(), 1000);
+    } else {
+      this.clearProcessingTimer();
+      this.processingIndicatorEl.style.display = 'none';
+      this.processingIndicatorEl.classList.remove('is-streaming');
+      this.statusEl.style.display = '';
+      this.statusEl.textContent = this.formatStatusText();
+    }
+  }
+
+  private updateProcessingLabel(): void {
+    const parts: string[] = [];
+    const toolCount = this.state.activeToolCallCount;
+
+    if (toolCount > 0) {
+      parts.push(`Processing ${toolCount === 1 ? '1 tool' : `${toolCount} tools`}`);
+    } else {
+      parts.push('Processing');
+    }
+
+    if (this.state.responseStartTime) {
+      const elapsed = Math.max(0, Math.floor((performance.now() - this.state.responseStartTime) / 1000));
+      const min = Math.floor(elapsed / 60);
+      const sec = elapsed % 60;
+      parts.push(`${min}:${String(sec).padStart(2, '0')}`);
+    }
+
+    this.processingLabelEl.textContent = parts.join(' - ');
+  }
+
+  private clearProcessingTimer(): void {
+    if (this.processingTimerInterval) {
+      clearInterval(this.processingTimerInterval);
+      this.processingTimerInterval = null;
+    }
+  }
+
+  // ── New conversation ─────────────────────────────────────────
+
+  private async handleNewConversation(): Promise<void> {
+    // Clean up current service
+    this.service?.resetSession();
+    this.state.resetStreamingState();
+    this.state.clearMaps();
+
+    // Clear messages
+    this.messagesEl.empty();
+
+    // Clear toolbar state
+    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
+
+    // Re-init
+    this.statusEl.textContent = 'Connecting...';
+    const ready = await this.service?.ensureReady();
+    this.toolbar.update({ isReady: !!ready });
+    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+
+    // Focus input
+    this.inputEl.focus();
   }
 
   // ── Settings handlers ──────────────────────────────────────────
@@ -247,6 +343,7 @@ export class ChatSession {
   }
 
   cleanup(): void {
+    this.clearProcessingTimer();
     this.toolbar.destroy();
     this.service?.cleanup();
     this.service = null;
