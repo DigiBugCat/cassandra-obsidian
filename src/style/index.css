@@ -1,4 +1,5 @@
 @import "./base.css";
+@import "./tabs.css";
 @import "./chat.css";
 @import "./composer.css";
 @import "./toolcalls.css";

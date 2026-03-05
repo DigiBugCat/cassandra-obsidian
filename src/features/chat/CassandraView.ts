@@ -4,15 +4,17 @@ import { ItemView } from 'obsidian';
 import type { AgentConfig } from '../../core/agent';
 import type { SessionStorage } from '../../core/storage';
 import type { CassandraSettings } from '../../core/types';
-import { ChatSession } from './ChatSession';
+import { TabBar, TabManager } from './tabs';
 
 export const VIEW_TYPE_CASSANDRA = 'cassandra-view';
 
 export class CassandraView extends ItemView {
   private config: AgentConfig;
-  private session: ChatSession | null = null;
   private saveSettings?: (settings: CassandraSettings) => Promise<void>;
   private sessionStorage?: SessionStorage;
+
+  private tabManager: TabManager | null = null;
+  private tabBar: TabBar | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -32,18 +34,60 @@ export class CassandraView extends ItemView {
 
   async onOpen(): Promise<void> {
     const container = this.containerEl.children[1] as HTMLElement;
-    this.session = new ChatSession({
+    container.empty();
+    container.addClass('cassandra-view-root');
+
+    // Tab bar (above content)
+    this.tabBar = new TabBar(container, {
+      onTabClick: (id) => {
+        this.tabManager?.activateTab(id);
+      },
+      onTabClose: (id) => {
+        this.tabManager?.closeTab(id);
+        // Ensure at least one tab exists
+        if (this.tabManager && this.tabManager.getTabCount() === 0) {
+          this.tabManager.createTab();
+        }
+      },
+      onNewTab: () => {
+        this.tabManager?.createTab();
+      },
+    });
+
+    // Content container (TabManager populates this)
+    const contentEl = container.createEl('div', { cls: 'cassandra-tab-content-container' });
+
+    // Tab manager
+    this.tabManager = new TabManager({
       config: this.config,
       app: this.app,
       component: this,
-      containerEl: container,
+      contentEl,
       saveSettings: this.saveSettings,
       sessionStorage: this.sessionStorage,
+      onTabsChanged: () => this.updateTabBar(),
+      maxTabs: this.config.settings.maxTabs || 3,
     });
+
+    // Create the initial tab
+    this.tabManager.createTab();
+  }
+
+  private updateTabBar(): void {
+    if (!this.tabManager || !this.tabBar) return;
+    const tabs = this.tabManager.getTabs();
+    const activeId = this.tabManager.getActiveTabId();
+    this.tabBar.update(tabs.map(t => ({
+      id: t.id,
+      title: t.title,
+      isActive: t.id === activeId,
+    })));
   }
 
   async onClose(): Promise<void> {
-    this.session?.cleanup();
-    this.session = null;
+    this.tabManager?.cleanup();
+    this.tabManager = null;
+    this.tabBar?.destroy();
+    this.tabBar = null;
   }
 }
