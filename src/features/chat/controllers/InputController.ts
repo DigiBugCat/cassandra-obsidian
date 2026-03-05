@@ -19,7 +19,7 @@ export interface InputControllerDeps {
   clearImages?: () => void;
   getContextXml?: () => string;
   clearFileContext?: () => void;
-  onSessionStale?: () => Promise<boolean>;
+  onSessionStale?: (retryPrompt?: string) => Promise<boolean>;
 }
 
 export class InputController {
@@ -122,12 +122,8 @@ export class InputController {
       const isStale = /session (has )?stop/i.test(message) || /session not found/i.test(message);
       if (isStale && this.deps.onSessionStale) {
         logger.info('handleSend: stale session detected, auto-recovering');
-        const recovered = await this.deps.onSessionStale();
-        if (recovered) {
-          assistantMsg.content += '\n\n> Session expired — new session created. Please resend your message.';
-        } else {
-          assistantMsg.content += `\n\n> Error: ${message}`;
-        }
+        assistantMsg.content += '\n\nSession expired — reconnecting...';
+        this.deps.onSessionStale(prompt);
       } else {
         assistantMsg.content += `\n\n> Error: ${message}`;
       }

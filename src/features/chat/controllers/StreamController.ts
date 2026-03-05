@@ -63,6 +63,7 @@ export interface StreamControllerDeps {
   renderer: MessageRenderer;
   getMessagesEl: () => HTMLElement;
   getSettings: () => CassandraSettings;
+  onSessionStale?: (retryPrompt?: string) => Promise<boolean>;
 }
 
 // ── StreamController ──────────────────────────────────────────────────
@@ -165,7 +166,15 @@ export class StreamController {
 
       case 'error': {
         this.flushPendingTools();
-        await this.appendText(`\n\n**Error:** ${chunk.content}`);
+        const isStale = /session (has )?stop/i.test(chunk.content) || /session not found/i.test(chunk.content);
+        if (isStale && this.deps.onSessionStale) {
+          await this.appendText('\n\nSession expired — reconnecting...');
+          // Grab the user's prompt from the preceding message for retry
+          const userMsg = state.messages.filter(m => m.role === 'user').pop();
+          this.deps.onSessionStale(userMsg?.content);
+        } else {
+          await this.appendText(`\n\n**Error:** ${chunk.content}`);
+        }
         break;
       }
 

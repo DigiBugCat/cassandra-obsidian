@@ -179,6 +179,7 @@ export class ChatSession {
       renderer: this.renderer,
       getMessagesEl: () => this.messagesEl,
       getSettings: () => this.config.settings,
+      onSessionStale: (retryPrompt) => this.handleStaleSession(retryPrompt),
     });
 
     // InputController — wrap handleSend to track messages
@@ -527,8 +528,8 @@ export class ChatSession {
     this.toolbar.update({ vaultRestriction: enabled });
   }
 
-  private async handleStaleSession(): Promise<boolean> {
-    log.info('stale_session_recovery');
+  private async handleStaleSession(retryPrompt?: string): Promise<boolean> {
+    log.info('stale_session_recovery', { hasRetryPrompt: !!retryPrompt });
     this.service?.resetSession();
     this.toolbar.update({ isReady: false });
     this.statusEl.textContent = 'Reconnecting...';
@@ -536,6 +537,15 @@ export class ChatSession {
     this.toolbar.update({ isReady: !!ready });
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
     await this.saveSessionMetadata();
+
+    // Auto-retry the message that failed
+    if (ready && retryPrompt) {
+      log.info('stale_session_retry', { prompt: retryPrompt.slice(0, 60) });
+      this.inputEl.value = retryPrompt;
+      // Small delay so the UI shows the reconnection state before retrying
+      setTimeout(() => this.handleSendOrCancel(), 200);
+    }
+
     return !!ready;
   }
 
