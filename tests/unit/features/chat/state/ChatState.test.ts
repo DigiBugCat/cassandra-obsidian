@@ -1,6 +1,5 @@
-import { ChatState } from '@/features/chat/state/ChatState';
-import type { ChatStateCallbacks } from '@/features/chat/state/ChatState';
 import type { ChatMessage, UsageInfo } from '@/core/types';
+import { ChatState } from '@/features/chat/state/ChatState';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -454,8 +453,7 @@ describe('ChatState', () => {
       jest.useFakeTimers();
       const callback = jest.fn();
       const state = new ChatState();
-      const interval = setInterval(callback, 100) as unknown as ReturnType<typeof setInterval>;
-      state.flavorTimerInterval = interval;
+      state.flavorTimerInterval = setInterval(callback, 100) as unknown as ReturnType<typeof setInterval>;
       state.clearFlavorTimerInterval();
       jest.advanceTimersByTime(500);
       expect(callback).not.toHaveBeenCalled();

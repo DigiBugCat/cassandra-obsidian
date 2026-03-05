@@ -1,7 +1,7 @@
+import type { CassandraSettings,ChatMessage } from '@/core/types';
 import { StreamController } from '@/features/chat/controllers/StreamController';
-import { ChatState } from '@/features/chat/state/ChatState';
 import type { MessageRenderer } from '@/features/chat/rendering/MessageRenderer';
-import type { StreamEvent, ChatMessage, CassandraSettings } from '@/core/types';
+import { ChatState } from '@/features/chat/state/ChatState';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ function makeMessagesEl(): HTMLElement {
 }
 
 function makeController(
-  stateOverrides?: Partial<ChatState>,
+  _stateOverrides?: Partial<ChatState>,
   settingsOverrides?: Partial<CassandraSettings>
 ): { controller: StreamController; state: ChatState; renderer: jest.Mocked<MessageRenderer>; messagesEl: HTMLElement } {
   const state = new ChatState();
@@ -485,7 +485,7 @@ describe('StreamController', () => {
 
   describe('finalizeCurrentTextBlock()', () => {
     it('pushes a text content block when there is content', async () => {
-      const { controller, state } = makeController();
+      const { controller } = makeController();
       const msg = makeMessage();
 
       // Create a text block via appendText path

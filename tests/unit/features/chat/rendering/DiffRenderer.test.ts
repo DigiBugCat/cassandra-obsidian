@@ -1,5 +1,5 @@
-import { splitIntoHunks, renderDiffContent } from '@/features/chat/rendering/DiffRenderer';
 import type { DiffLine } from '@/core/types/diff';
+import { renderDiffContent,splitIntoHunks } from '@/features/chat/rendering/DiffRenderer';
 
 function equal(text: string): DiffLine { return { type: 'equal', text }; }
 function insert(text: string): DiffLine { return { type: 'insert', text }; }
@@ -177,8 +177,6 @@ describe('renderDiffContent()', () => {
     const lines: DiffLine[] = Array.from({ length: 10 }, (_, i) => insert(`line ${i}`));
     renderDiffContent(container, lines);
     // Under the cap: rendered as normal hunks (no separator for remaining)
-    const separator = container.querySelector('.cassandra-diff-separator');
-    // The separator here would be a hunk separator, not a "more lines" separator
     // All 10 inserts are in one hunk — no separator needed between hunks
     const lineEls = container.querySelectorAll('.cassandra-diff-insert');
     expect(lineEls.length).toBe(10);

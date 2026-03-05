@@ -1,8 +1,8 @@
-import { InputController } from '@/features/chat/controllers/InputController';
-import { ChatState } from '@/features/chat/state/ChatState';
 import type { AgentService } from '@/core/agent';
-import type { MessageRenderer } from '@/features/chat/rendering/MessageRenderer';
+import { InputController } from '@/features/chat/controllers/InputController';
 import type { StreamController } from '@/features/chat/controllers/StreamController';
+import type { MessageRenderer } from '@/features/chat/rendering/MessageRenderer';
+import { ChatState } from '@/features/chat/state/ChatState';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ describe('InputController', () => {
 
     it('sets isStreaming to true during the stream and false after', async () => {
       let wasStreamingDuringQuery = false;
-      const { controller, state } = makeController();
+      const { state } = makeController();
 
       // Observe state during query execution
       const service = makeService();
@@ -352,10 +352,8 @@ describe('InputController', () => {
       resolveFirst!();
       await send1;
 
-      // The 'gen1' text event should have been routed, but only one call
-      // happened before the generation check kicked in and broke the loop
-      // (This primarily tests that the guard check is evaluated per-event.)
-      // We don't deeply assert the discard here — just that no errors occur.
+      // The loop should have completed without throwing
+      expect(state.isStreaming).toBe(false);
     });
   });
 

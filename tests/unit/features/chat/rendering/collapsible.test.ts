@@ -1,5 +1,5 @@
-import { setupCollapsible, collapseElement } from '@/features/chat/rendering/collapsible';
 import type { CollapsibleState } from '@/features/chat/rendering/collapsible';
+import { collapseElement,setupCollapsible } from '@/features/chat/rendering/collapsible';
 
 function makeElements(): {
   wrapperEl: HTMLElement;
