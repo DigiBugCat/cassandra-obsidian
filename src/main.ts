@@ -13,6 +13,7 @@ import { CassandraSettingsTab } from './features/settings/CassandraSettingsTab';
 
 export default class CassandraPlugin extends Plugin {
   settings: CassandraSettings = { ...DEFAULT_SETTINGS };
+  private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private adapter: VaultFileAdapter | null = null;
   private sessionStorage: SessionStorage | null = null;
   private organizer: ThreadOrganizerService | null = null;
@@ -113,10 +114,13 @@ export default class CassandraPlugin extends Plugin {
     });
 
     this.addSettingTab(new CassandraSettingsTab(this.app, this));
+
+    // Periodically refresh conversation cache so threads view stays current
+    this.refreshInterval = setInterval(() => this.refreshConversationCache(), 5000);
   }
 
   async onunload() {
-    // Views clean themselves up via onClose
+    if (this.refreshInterval) clearInterval(this.refreshInterval);
   }
 
   getAgentConfig(): AgentConfig {
@@ -137,6 +141,15 @@ export default class CassandraPlugin extends Plugin {
     try {
       this.conversationCache = await this.sessionStorage!.list();
     } catch { /* ignore */ }
+    // Refresh threads view if open
+    this.refreshThreadsView();
+  }
+
+  private refreshThreadsView(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_THREADS);
+    if (leaves.length > 0) {
+      (leaves[0].view as ThreadsView).refresh().catch(() => {});
+    }
   }
 
   private async loadSettings(): Promise<void> {
