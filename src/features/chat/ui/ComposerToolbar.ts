@@ -1,13 +1,13 @@
 /**
  * ComposerToolbar — bottom toolbar for the composer.
  *
- * Layout: Model → Thinking → Token count → Refresh → Vault restriction → Permission toggle
+ * Layout: Model → Thinking → Token count
  * Hover dropdowns for model selector with click fallback for mobile.
  */
 
 import { setIcon } from 'obsidian';
 
-import type { PermissionMode, ThinkingBudget, UsageInfo } from '../../../core/types';
+import type { ThinkingBudget, UsageInfo } from '../../../core/types';
 import { DEFAULT_CLAUDE_MODELS } from '../../../core/types';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -15,16 +15,11 @@ import { DEFAULT_CLAUDE_MODELS } from '../../../core/types';
 export interface ComposerToolbarCallbacks {
   onModelChange: (model: string) => void;
   onThinkingChange: (budget: ThinkingBudget) => void;
-  onPermissionModeChange: (mode: PermissionMode) => void;
-  onVaultRestrictionChange: (enabled: boolean) => void;
-  onRefreshSession: () => void;
 }
 
 export interface ComposerToolbarState {
   model: string;
   thinkingBudget: ThinkingBudget;
-  permissionMode: PermissionMode;
-  vaultRestriction: boolean;
   isStreaming: boolean;
   isReady: boolean;
   usage: UsageInfo | null;
@@ -44,10 +39,6 @@ export class ComposerToolbar {
   private tokenContainer: HTMLElement;
   private tokenContext: HTMLElement;
   private tokenOutput: HTMLElement;
-  private refreshIcon: HTMLElement;
-  private vaultIcon: HTMLElement;
-  private permissionLabel: HTMLElement;
-  private toggleSwitch: HTMLElement;
   private documentClickHandler: () => void;
 
   constructor(parentEl: HTMLElement, callbacks: ComposerToolbarCallbacks, initialState: ComposerToolbarState) {
@@ -84,34 +75,6 @@ export class ComposerToolbar {
     this.tokenOutput.style.display = 'none';
     this.tokenContainer.style.display = 'none';
 
-    // ── Refresh session ──
-    const refreshContainer = this.el.createEl('div', { cls: 'cassandra-refresh-session' });
-    this.refreshIcon = refreshContainer.createEl('div', { cls: 'cassandra-refresh-session-icon' });
-    setIcon(this.refreshIcon, 'refresh-cw');
-    this.refreshIcon.setAttribute('title', 'Refresh session (restart CLI)');
-    this.refreshIcon.addEventListener('click', (e) => {
-      e.stopPropagation();
-      callbacks.onRefreshSession();
-    });
-
-    // ── Vault restriction toggle ──
-    const vaultContainer = this.el.createEl('div', { cls: 'cassandra-vault-restriction-toggle' });
-    this.vaultIcon = vaultContainer.createEl('div', { cls: 'cassandra-vault-restriction-icon' });
-    setIcon(this.vaultIcon, 'shield');
-    this.vaultIcon.addEventListener('click', () => {
-      callbacks.onVaultRestrictionChange(!this.state.vaultRestriction);
-    });
-
-    // ── Permission toggle (pushed right via margin-left: auto) ──
-    const permissionToggle = this.el.createEl('div', { cls: 'cassandra-permission-toggle' });
-    this.permissionLabel = permissionToggle.createEl('span', { cls: 'cassandra-permission-label' });
-    this.toggleSwitch = permissionToggle.createEl('div', { cls: 'cassandra-toggle-switch' });
-    this.toggleSwitch.addEventListener('click', () => {
-      const current = this.state.permissionMode;
-      const next: PermissionMode = current === 'bypassPermissions' ? 'default' : 'bypassPermissions';
-      callbacks.onPermissionModeChange(next);
-    });
-
     // Initial render
     this.render();
   }
@@ -126,10 +89,6 @@ export class ComposerToolbar {
     this.modelBtn.toggleClass('ready', ready);
   }
 
-  setRefreshing(refreshing: boolean): void {
-    this.refreshIcon.toggleClass('is-refreshing', refreshing);
-  }
-
   destroy(): void {
     document.removeEventListener('click', this.documentClickHandler);
     this.el.remove();
@@ -141,8 +100,6 @@ export class ComposerToolbar {
     this.renderModelSelector();
     this.renderThinkingToggle();
     this.renderTokenCount();
-    this.renderVaultRestriction();
-    this.renderPermissionToggle();
     this.modelBtn.toggleClass('ready', this.state.isReady);
   }
 
@@ -205,34 +162,6 @@ export class ComposerToolbar {
     if (usage.outputTokens > 0) tooltip += ` · ${this.formatTokens(usage.outputTokens)} output`;
     if (usage.percentage > 80) tooltip += ' (Approaching limit)';
     this.tokenContainer.setAttribute('data-tooltip', tooltip);
-  }
-
-  private renderVaultRestriction(): void {
-    const { vaultRestriction } = this.state;
-    this.vaultIcon.toggleClass('active', vaultRestriction);
-    this.vaultIcon.setAttribute('title',
-      vaultRestriction ? 'Vault restriction: ON (click to disable)' : 'Vault restriction: OFF (click to enable)',
-    );
-  }
-
-  private renderPermissionToggle(): void {
-    const { permissionMode } = this.state;
-
-    if (permissionMode === 'plan') {
-      this.toggleSwitch.style.display = 'none';
-      this.permissionLabel.textContent = 'PLAN';
-      this.permissionLabel.addClass('plan-active');
-    } else {
-      this.toggleSwitch.style.display = '';
-      this.permissionLabel.removeClass('plan-active');
-      if (permissionMode === 'bypassPermissions') {
-        this.toggleSwitch.addClass('active');
-        this.permissionLabel.textContent = 'YOLO';
-      } else {
-        this.toggleSwitch.removeClass('active');
-        this.permissionLabel.textContent = 'Safe';
-      }
-    }
   }
 
   private formatTokens(tokens: number): string {

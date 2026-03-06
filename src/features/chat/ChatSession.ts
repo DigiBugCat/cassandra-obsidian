@@ -144,14 +144,9 @@ export class ChatSession {
     this.toolbar = new ComposerToolbar(composer, {
       onModelChange: (model) => this.handleModelChange(model),
       onThinkingChange: (budget) => this.handleThinkingChange(budget),
-      onPermissionModeChange: (mode) => this.handlePermissionModeChange(mode),
-      onVaultRestrictionChange: (enabled) => this.handleVaultRestrictionChange(enabled),
-      onRefreshSession: () => this.handleRefreshSession(),
     }, {
       model: settings.model,
       thinkingBudget: settings.thinkingBudget,
-      permissionMode: settings.permissionMode,
-      vaultRestriction: settings.enableVaultRestriction,
       isStreaming: false,
       isReady: false,
       usage: null,
@@ -536,20 +531,6 @@ export class ChatSession {
     this.toolbar.update({ thinkingBudget: budget });
   }
 
-  private handlePermissionModeChange(mode: PermissionMode): void {
-    this.config.settings.permissionMode = mode;
-    this.service?.updateConfig(this.config);
-    this.persistSettings();
-    this.toolbar.update({ permissionMode: mode });
-  }
-
-  private handleVaultRestrictionChange(enabled: boolean): void {
-    this.config.settings.enableVaultRestriction = enabled;
-    this.service?.updateConfig(this.config);
-    this.persistSettings();
-    this.toolbar.update({ vaultRestriction: enabled });
-  }
-
   private async handleStaleSession(retryPrompt?: string): Promise<boolean> {
     log.info('stale_session_recovery', { hasRetryPrompt: !!retryPrompt });
     this.toolbar.update({ isReady: false });
@@ -579,16 +560,6 @@ export class ChatSession {
     return !!ready;
   }
 
-  private async handleRefreshSession(): Promise<void> {
-    this.toolbar.update({ isReady: false });
-    this.statusEl.textContent = 'Reconnecting...';
-    this.service?.resetSession();
-    const ready = await this.service?.ensureReady();
-    this.toolbar.update({ isReady: !!ready });
-    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
-    await this.saveSessionMetadata();
-  }
-
   private persistSettings(): void {
     this.deps.saveSettings?.(this.config.settings);
   }
@@ -602,10 +573,6 @@ export class ChatSession {
     this.service.setApprovalCallback(async (toolName, input, summary) => {
       const decision = await ApprovalModal.prompt(this.deps.app, toolName, input, summary);
       return decision === 'cancel' ? 'deny' : decision;
-    });
-
-    this.service.setPermissionModeSyncCallback((mode) => {
-      this.toolbar.update({ permissionMode: mode as PermissionMode });
     });
 
     this.service.setOnSessionCreated((sessionId) => {
