@@ -52,7 +52,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   model: 'sonnet',
   thinkingBudget: 'medium',
 
-  permissionMode: 'default',
+  permissionMode: 'bypassPermissions',
   enableVaultRestriction: false,
 
   systemPrompt: '',
