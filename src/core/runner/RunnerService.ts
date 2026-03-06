@@ -337,6 +337,12 @@ export class RunnerService implements AgentService {
         const result = await this.client.createSession(req);
         this.runnerSessionId = result.session_id;
         log.info('session_created', { session_id: this.runnerSessionId });
+
+        // Snapshot settings at creation so applyDynamicOptions detects subsequent changes
+        this.currentModel = settings.model;
+        this.currentThinkingBudget = settings.thinkingBudget;
+        this.currentPermissionMode = settings.permissionMode;
+
         this.onSessionCreatedCallback?.(this.runnerSessionId);
       }
 

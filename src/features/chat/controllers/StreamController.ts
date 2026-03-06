@@ -387,6 +387,9 @@ export class StreamController {
     const { state, renderer } = this.deps;
     if (!state.currentContentEl) return;
 
+    // Skip empty thinking content — avoids "Thought for 0s" when thinking is disabled
+    if (!content && !state.currentThinkingState) return;
+
     this.hideThinkingIndicator();
 
     if (!state.currentThinkingState) {
