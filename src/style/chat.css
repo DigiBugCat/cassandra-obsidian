@@ -23,7 +23,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: min(42vw, 300px);
+  max-width: 300px;
   padding: 3px 8px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 999px;

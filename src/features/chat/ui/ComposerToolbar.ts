@@ -48,6 +48,7 @@ export class ComposerToolbar {
   private vaultIcon: HTMLElement;
   private permissionLabel: HTMLElement;
   private toggleSwitch: HTMLElement;
+  private documentClickHandler: () => void;
 
   constructor(parentEl: HTMLElement, callbacks: ComposerToolbarCallbacks, initialState: ComposerToolbarState) {
     this.callbacks = callbacks;
@@ -66,7 +67,8 @@ export class ComposerToolbar {
       const isOpen = modelSelector.hasClass('is-open');
       modelSelector.toggleClass('is-open', !isOpen);
     });
-    document.addEventListener('click', () => modelSelector.removeClass('is-open'));
+    this.documentClickHandler = () => modelSelector.removeClass('is-open');
+    document.addEventListener('click', this.documentClickHandler);
 
     // ── Thinking toggle (off ↔ medium) ──
     this.thinkingToggle = this.el.createEl('div', { cls: 'cassandra-thinking-toggle' });
@@ -129,6 +131,7 @@ export class ComposerToolbar {
   }
 
   destroy(): void {
+    document.removeEventListener('click', this.documentClickHandler);
     this.el.remove();
   }
 

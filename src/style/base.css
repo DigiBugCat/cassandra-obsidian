@@ -4,6 +4,7 @@
   height: 100%;
   overflow: hidden;
   font-family: var(--font-interface);
+  contain: strict;
 }
 
 /* Animations */

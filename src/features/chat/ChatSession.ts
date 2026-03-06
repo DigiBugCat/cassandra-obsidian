@@ -53,6 +53,7 @@ export class ChatSession {
   // DOM refs
   private messagesEl: HTMLElement;
   private inputEl: HTMLTextAreaElement;
+  private documentClickHandler: () => void;
 
   // Header elements
   private processingIndicatorEl: HTMLElement;
@@ -213,8 +214,9 @@ export class ChatSession {
     // Auto-resize textarea
     this.inputEl.addEventListener('input', () => this.autoResize());
 
-    // Close history dropdown on outside click
-    document.addEventListener('click', () => this.closeHistoryDropdown());
+    // Close history dropdown on outside click (stored for cleanup)
+    this.documentClickHandler = () => this.closeHistoryDropdown();
+    document.addEventListener('click', this.documentClickHandler);
 
     // Init service
     this.initService();
@@ -633,6 +635,7 @@ export class ChatSession {
   cleanup(): void {
     this.saveSessionMetadata();
     this.clearProcessingTimer();
+    document.removeEventListener('click', this.documentClickHandler);
     this.toolbar.destroy();
     this.imageManager.destroy();
     this.fileManager.destroy();
