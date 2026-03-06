@@ -585,38 +585,51 @@ export class ChatSession {
   // ── Service init ───────────────────────────────────────────────
 
   private async initService(): Promise<void> {
-    try {
-      this.service = new RunnerService(this.config);
+    this.service = new RunnerService(this.config);
 
-      // Wire approval callback
-      this.service.setApprovalCallback(async (toolName, input, summary) => {
-        const decision = await ApprovalModal.prompt(this.deps.app, toolName, input, summary);
-        return decision === 'cancel' ? 'deny' : decision;
-      });
+    // Wire approval callback
+    this.service.setApprovalCallback(async (toolName, input, summary) => {
+      const decision = await ApprovalModal.prompt(this.deps.app, toolName, input, summary);
+      return decision === 'cancel' ? 'deny' : decision;
+    });
 
-      this.service.setPermissionModeSyncCallback((mode) => {
-        this.toolbar.update({ permissionMode: mode as PermissionMode });
-      });
+    this.service.setPermissionModeSyncCallback((mode) => {
+      this.toolbar.update({ permissionMode: mode as PermissionMode });
+    });
 
-      this.service.setOnSessionCreated((sessionId) => {
-        log.info('session_created_callback', { sessionId });
-        this.saveSessionMetadata();
-      });
+    this.service.setOnSessionCreated((sessionId) => {
+      log.info('session_created_callback', { sessionId });
+      this.saveSessionMetadata();
+    });
 
-      const ready = await this.service.ensureReady();
-      this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
-      this.toolbar.update({ isReady: !!ready });
-      if (!ready) {
-        log.warn('service_not_ready');
+    await this.connectWithRetry();
+  }
+
+  private async connectWithRetry(maxRetries = 5): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.statusEl.textContent = attempt > 1 ? `Connecting (attempt ${attempt})...` : 'Connecting...';
+        const ready = await this.service!.ensureReady();
+        if (ready) {
+          this.statusEl.textContent = this.formatStatusText();
+          this.toolbar.update({ isReady: true });
+          await this.saveSessionMetadata();
+          return;
+        }
+      } catch (err) {
+        log.warn('connect_attempt_failed', { attempt, error: err instanceof Error ? err.message : String(err) });
       }
 
-      // Save metadata now that we have a runner session id
-      await this.saveSessionMetadata();
-    } catch (err) {
-      log.error('service_init_failed', { error: err instanceof Error ? err.message : String(err) });
-      this.statusEl.textContent = 'Connection failed';
-      this.toolbar.update({ isReady: false });
+      if (attempt < maxRetries) {
+        const delay = Math.min(2000 * attempt, 10000);
+        this.statusEl.textContent = `Retrying in ${Math.round(delay / 1000)}s...`;
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
+
+    log.error('connect_failed_all_retries', { maxRetries });
+    this.statusEl.textContent = 'Disconnected';
+    this.toolbar.update({ isReady: false });
   }
 
   // ── Helpers ────────────────────────────────────────────────────
