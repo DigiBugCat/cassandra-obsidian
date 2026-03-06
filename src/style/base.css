@@ -7,6 +7,20 @@
   contain: strict;
 }
 
+/* Settings: MCP server cards */
+.cassandra-mcp-server-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 0 12px;
+  margin-bottom: 8px;
+  background: var(--background-secondary);
+}
+
+.cassandra-mcp-server-card .setting-item {
+  border-top: none;
+  padding: 8px 0;
+}
+
 /* Animations */
 @keyframes thinking-pulse {
   0%, 100% { opacity: 0.5; }

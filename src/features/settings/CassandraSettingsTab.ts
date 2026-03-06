@@ -5,7 +5,7 @@
  */
 
 import type { App } from 'obsidian';
-import { PluginSettingTab, Setting } from 'obsidian';
+import { Modal, PluginSettingTab, Setting } from 'obsidian';
 
 import { DEFAULT_CLAUDE_MODELS } from '../../core/types';
 import type CassandraPlugin from '../../main';
@@ -126,40 +126,45 @@ export class CassandraSettingsTab extends PluginSettingTab {
     // ── MCP Servers ──
     containerEl.createEl('h2', { text: 'MCP Servers' });
 
-    const mcpSetting = new Setting(containerEl)
-      .setName('MCP server configuration')
-      .setDesc('JSON object mapping server names to their config. Applied on new sessions.');
+    const mcpListEl = containerEl.createEl('div', { cls: 'cassandra-mcp-list' });
 
-    const mcpErrorEl = containerEl.createEl('div', {
-      cls: 'setting-item-description',
-      attr: { style: 'color: var(--color-red); margin-top: -8px; margin-bottom: 8px; display: none;' },
-    });
+    const renderMcpServers = () => {
+      mcpListEl.empty();
+      const servers = this.parseMcpServers();
 
-    mcpSetting.addTextArea((text) => {
-      text
-        .setPlaceholder('{\n  "my-server": {\n    "command": "npx",\n    "args": ["-y", "@my/mcp-server"]\n  }\n}')
-        .setValue(this.plugin.settings.mcpServersJson)
-        .onChange(async (value) => {
-          if (value.trim()) {
-            try {
-              JSON.parse(value);
-              mcpErrorEl.style.display = 'none';
-            } catch (e) {
-              mcpErrorEl.textContent = `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`;
-              mcpErrorEl.style.display = '';
-              return;
-            }
-          } else {
-            mcpErrorEl.style.display = 'none';
-          }
-          this.plugin.settings.mcpServersJson = value;
-          await this.plugin.saveSettings();
-        });
-      text.inputEl.rows = 6;
-      text.inputEl.style.width = '100%';
-      text.inputEl.style.fontFamily = 'var(--font-monospace)';
-      text.inputEl.style.fontSize = '12px';
-    });
+      for (const [name, config] of Object.entries(servers)) {
+        const serverEl = mcpListEl.createEl('div', { cls: 'cassandra-mcp-server-card' });
+
+        new Setting(serverEl)
+          .setName(name)
+          .setDesc(`${config.command}${config.args?.length ? ' ' + config.args.join(' ') : ''}`)
+          .addExtraButton((btn) =>
+            btn.setIcon('pencil').setTooltip('Edit').onClick(() => {
+              this.editMcpServer(name, config, renderMcpServers);
+            }),
+          )
+          .addExtraButton((btn) =>
+            btn.setIcon('trash').setTooltip('Remove').onClick(async () => {
+              delete servers[name];
+              this.plugin.settings.mcpServersJson = Object.keys(servers).length > 0
+                ? JSON.stringify(servers, null, 2) : '';
+              await this.plugin.saveSettings();
+              renderMcpServers();
+            }),
+          );
+      }
+
+      new Setting(mcpListEl)
+        .setName('Add MCP server')
+        .setDesc('Configure a new MCP server for runner sessions')
+        .addButton((btn) =>
+          btn.setButtonText('Add').setCta().onClick(() => {
+            this.editMcpServer(null, null, renderMcpServers);
+          }),
+        );
+    };
+
+    renderMcpServers();
 
     // ── Content ──
     containerEl.createEl('h2', { text: 'Content' });
@@ -234,5 +239,142 @@ export class CassandraSettingsTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+  }
+
+  private parseMcpServers(): Record<string, { command: string; args?: string[]; env?: Record<string, string> }> {
+    const json = this.plugin.settings.mcpServersJson;
+    if (!json?.trim()) return {};
+    try {
+      const parsed = JSON.parse(json);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed;
+    } catch { /* invalid json */ }
+    return {};
+  }
+
+  private editMcpServer(
+    existingName: string | null,
+    existingConfig: { command: string; args?: string[]; env?: Record<string, string> } | null,
+    onSave: () => void,
+  ): void {
+    const modal = new McpServerModal(this.app, existingName, existingConfig, async (name, config) => {
+      const servers = this.parseMcpServers();
+
+      // If renaming, remove old entry
+      if (existingName && existingName !== name) {
+        delete servers[existingName];
+      }
+
+      servers[name] = config;
+      this.plugin.settings.mcpServersJson = JSON.stringify(servers, null, 2);
+      await this.plugin.saveSettings();
+      onSave();
+    });
+    modal.open();
+  }
+}
+
+class McpServerModal extends Modal {
+  private name: string;
+  private command: string;
+  private args: string;
+  private envVars: string;
+  private onSubmit: (name: string, config: { command: string; args?: string[]; env?: Record<string, string> }) => void;
+
+  constructor(
+    app: App,
+    name: string | null,
+    config: { command: string; args?: string[]; env?: Record<string, string> } | null,
+    onSubmit: (name: string, config: { command: string; args?: string[]; env?: Record<string, string> }) => void,
+  ) {
+    super(app);
+    this.name = name ?? '';
+    this.command = config?.command ?? '';
+    this.args = config?.args?.join(' ') ?? '';
+    this.envVars = config?.env ? Object.entries(config.env).map(([k, v]) => `${k}=${v}`).join('\n') : '';
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: this.name ? 'Edit MCP Server' : 'Add MCP Server' });
+
+    new Setting(contentEl)
+      .setName('Server name')
+      .setDesc('Unique identifier (e.g. "my-mcp-server")')
+      .addText((text) =>
+        text
+          .setPlaceholder('my-server')
+          .setValue(this.name)
+          .onChange((v) => { this.name = v; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Command')
+      .setDesc('Executable to run (e.g. "npx", "node", "python")')
+      .addText((text) =>
+        text
+          .setPlaceholder('npx')
+          .setValue(this.command)
+          .onChange((v) => { this.command = v; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Arguments')
+      .setDesc('Space-separated arguments (e.g. "-y @modelcontextprotocol/server-filesystem")')
+      .addText((text) =>
+        text
+          .setPlaceholder('-y @my/mcp-server')
+          .setValue(this.args)
+          .onChange((v) => { this.args = v; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Environment variables')
+      .setDesc('One per line: KEY=value')
+      .addTextArea((text) => {
+        text
+          .setPlaceholder('API_KEY=xxx\nDEBUG=true')
+          .setValue(this.envVars)
+          .onChange((v) => { this.envVars = v; });
+        text.inputEl.rows = 3;
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.fontFamily = 'var(--font-monospace)';
+        text.inputEl.style.fontSize = '12px';
+      });
+
+    new Setting(contentEl)
+      .addButton((btn) =>
+        btn.setButtonText('Save').setCta().onClick(() => {
+          if (!this.name.trim() || !this.command.trim()) return;
+
+          const config: { command: string; args?: string[]; env?: Record<string, string> } = {
+            command: this.command.trim(),
+          };
+
+          const args = this.args.trim();
+          if (args) config.args = args.split(/\s+/);
+
+          const envLines = this.envVars.trim();
+          if (envLines) {
+            config.env = {};
+            for (const line of envLines.split('\n')) {
+              const eq = line.indexOf('=');
+              if (eq > 0) {
+                config.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+              }
+            }
+          }
+
+          this.onSubmit(this.name.trim(), config);
+          this.close();
+        }),
+      )
+      .addButton((btn) =>
+        btn.setButtonText('Cancel').onClick(() => this.close()),
+      );
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }
