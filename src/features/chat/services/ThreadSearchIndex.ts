@@ -8,8 +8,8 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const MiniSearch = require('minisearch');
 
-import type { ConversationMeta } from '../../../core/types';
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
+import type { ConversationMeta } from '../../../core/types';
 
 const INDEX_PATH = '.cassandra/search-index.json';
 const MINISEARCH_OPTIONS = {

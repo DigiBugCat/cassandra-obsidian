@@ -1,0 +1,456 @@
+.cassandra-threads-pane-container {
+  background: var(--background-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cassandra-threads-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+}
+
+.cassandra-threads-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.cassandra-threads-pane-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.cassandra-threads-search {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.cassandra-threads-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cassandra-threads-search-input {
+  width: 100%;
+  padding: 4px 24px 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+}
+
+.cassandra-threads-search-clear {
+  position: absolute;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.6;
+}
+
+.cassandra-threads-search-clear:hover {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.cassandra-threads-search-clear svg {
+  width: 10px;
+  height: 10px;
+}
+
+.cassandra-threads-search-input:focus {
+  border-color: var(--interactive-accent);
+}
+
+.cassandra-threads-search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.cassandra-threads-search-dropdown {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--background-primary);
+  scrollbar-width: thin;
+  display: none;
+}
+
+.cassandra-threads-search-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  padding: 6px 10px 2px;
+}
+
+.cassandra-threads-search-result {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cassandra-threads-search-result:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-threads-search-result-title {
+  font-size: 12px;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cassandra-threads-search-result-preview {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.cassandra-threads-search-empty,
+.cassandra-threads-search-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 8px 10px;
+  font-style: italic;
+}
+
+.cassandra-threads-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cassandra-threads-pane-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cassandra-threads-pane-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-threads-pane-btn-danger:hover {
+  color: var(--text-error);
+}
+
+.cassandra-threads-pane-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cassandra-threads-pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--background-modifier-border) transparent;
+}
+
+.cassandra-threads-pane-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.cassandra-threads-pane-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cassandra-threads-pane-body::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+}
+
+.cassandra-threads-pane-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+.cassandra-threads-section {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.cassandra-threads-section:last-child {
+  border-bottom: none;
+}
+
+.cassandra-threads-section-draggable {
+  cursor: grab;
+}
+
+.cassandra-threads-section-draggable.is-dragging {
+  opacity: 0.4;
+}
+
+.cassandra-threads-section-draggable.is-drag-over {
+  border-top: 2px solid var(--interactive-accent);
+}
+
+.cassandra-threads-section.is-thread-drag-over {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+.cassandra-thread-row.is-dragging {
+  opacity: 0.4;
+}
+
+.cassandra-threads-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 8px;
+  cursor: pointer;
+  position: relative;
+}
+
+.cassandra-threads-section-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-threads-section-chevron {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.cassandra-threads-section-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.cassandra-threads-section-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cassandra-threads-section-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  position: absolute;
+  right: 8px;
+}
+
+.cassandra-threads-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  position: absolute;
+  right: 8px;
+}
+
+.cassandra-threads-section-header:hover .cassandra-threads-section-count {
+  visibility: hidden;
+}
+
+.cassandra-threads-section-header:hover .cassandra-threads-section-actions {
+  opacity: 1;
+}
+
+.cassandra-threads-section-move-btn {
+  width: 22px;
+  height: 22px;
+  color: var(--text-faint);
+}
+
+.cassandra-threads-section-move-btn:hover {
+  color: var(--text-normal);
+}
+
+.cassandra-threads-section-move-btn svg {
+  width: 16px;
+  height: 14px;
+}
+
+.cassandra-threads-section-body {
+  padding-bottom: 2px;
+}
+
+.cassandra-threads-empty {
+  padding: 2px 8px 4px 24px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.cassandra-thread-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 16px;
+  cursor: pointer;
+  min-height: 24px;
+}
+
+.cassandra-thread-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-thread-row.is-pinned .cassandra-thread-row-title {
+  color: var(--text-accent);
+}
+
+.cassandra-thread-row-pin-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 3px;
+  color: var(--text-accent);
+  opacity: 0.7;
+}
+
+.cassandra-thread-row-pin-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.cassandra-thread-row.is-active {
+  background: var(--background-modifier-active-hover);
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
+.cassandra-thread-row.is-attention {
+  background: color-mix(in srgb, #5bb8f5 10%, transparent);
+}
+
+.cassandra-thread-row.is-attention:hover {
+  background: color-mix(in srgb, #5bb8f5 16%, transparent);
+}
+
+.cassandra-thread-row.is-attention .cassandra-thread-row-title {
+  color: var(--text-normal);
+}
+
+.cassandra-thread-row-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cassandra-thread-row-dot.is-idle {
+  background: transparent;
+}
+
+.cassandra-thread-row-dot.is-active {
+  background: var(--interactive-accent);
+}
+
+.cassandra-thread-row-dot.is-streaming {
+  background: #e8950a;
+}
+
+.cassandra-thread-row-dot.is-attention {
+  background: #5bb8f5;
+}
+
+.cassandra-thread-row-dot.is-unread {
+  background: color-mix(in srgb, #5bb8f5 70%, transparent);
+}
+
+.cassandra-thread-row.is-unread .cassandra-thread-row-title {
+  font-weight: 600;
+}
+
+.cassandra-thread-row-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cassandra-thread-row-title {
+  font-size: 12px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.cassandra-thread-row-meta {
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.cassandra-thread-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+}
+
+.cassandra-thread-row:hover .cassandra-thread-row-actions {
+  opacity: 1;
+}
+
+.cassandra-thread-action-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cassandra-thread-action-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-thread-action-btn-danger:hover {
+  color: var(--text-error);
+}
+
+.cassandra-thread-action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cassandra-thread-action-btn.is-pinned {
+  color: var(--text-accent);
+}

@@ -4,9 +4,9 @@
  * Thread folders are Cassandra-only metadata, not Obsidian file folders.
  */
 
-import type { ConversationMeta } from '../../../core/types';
 import type { SessionStorage } from '../../../core/storage';
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
+import type { ConversationMeta } from '../../../core/types';
 
 export const THREAD_ORGANIZER_VERSION = 1;
 export const THREAD_FOLDER_ID_UNSORTED = '__unsorted__';
