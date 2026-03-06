@@ -102,6 +102,19 @@ export class RunnerClient extends EventEmitter {
     return resp.json;
   }
 
+  async generateTitle(id: string, userMessage: string, assistantMessage?: string): Promise<string> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/generate-title`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userMessage, assistantMessage }),
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to generate title: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json.title;
+  }
+
   // --- WebSocket ---
 
   connect(): Promise<void> {

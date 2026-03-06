@@ -49,6 +49,8 @@ export class RunnerService implements AgentService {
   private exitPlanModeCallback: ExitPlanModeCallback | null = null;
   private permissionModeSyncCallback: ((sdkMode: string) => void) | null = null;
   private onSessionCreatedCallback: ((sessionId: string) => void) | null = null;
+  private onTitleGeneratedCallback: ((title: string) => void) | null = null;
+  private titleGenerated = false;
 
   // State
   private readyListeners: ReadyListener[] = [];
@@ -160,7 +162,21 @@ export class RunnerService implements AgentService {
     }
 
     yield { type: 'sdk_user_sent', uuid };
-    yield* this.yieldEventsUntilDone();
+
+    // Collect assistant text for title generation
+    let assistantText = '';
+    for await (const event of this.yieldEventsUntilDone()) {
+      if (event.type === 'text') assistantText += event.content;
+      yield event;
+    }
+
+    // Fire background title generation after first response
+    if (!this.titleGenerated && this.config.settings.enableAutoTitleGeneration && this.runnerSessionId) {
+      this.titleGenerated = true;
+      this.client.generateTitle(this.runnerSessionId, prompt, assistantText.substring(0, 500)).then((title) => {
+        if (title) this.onTitleGeneratedCallback?.(title);
+      }).catch(() => {});
+    }
   }
 
   cancel(): void {
@@ -347,6 +363,7 @@ export class RunnerService implements AgentService {
   setExitPlanModeCallback(callback: ExitPlanModeCallback | null): void { this.exitPlanModeCallback = callback; }
   setPermissionModeSyncCallback(callback: ((sdkMode: string) => void) | null): void { this.permissionModeSyncCallback = callback; }
   setOnSessionCreated(callback: ((sessionId: string) => void) | null): void { this.onSessionCreatedCallback = callback; }
+  setOnTitleGenerated(callback: ((title: string) => void) | null): void { this.onTitleGeneratedCallback = callback; }
 
   // ── Slash Commands ─────────────────────────────────────────
 

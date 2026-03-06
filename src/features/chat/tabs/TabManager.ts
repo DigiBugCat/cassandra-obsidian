@@ -66,6 +66,7 @@ export class TabManager {
       containerEl,
       saveSettings: this.deps.saveSettings,
       sessionStorage: this.deps.sessionStorage,
+      onTitleChanged: (title) => this.updateTabTitle(id, title),
     });
 
     const tab: Tab = { id, title: 'New chat', containerEl, session };
@@ -107,6 +108,14 @@ export class TabManager {
     }
 
     this.deps.onTabsChanged?.();
+  }
+
+  updateTabTitle(id: string, title: string): void {
+    const tab = this.tabs.find(t => t.id === id);
+    if (tab) {
+      tab.title = title;
+      this.deps.onTabsChanged?.();
+    }
   }
 
   cleanup(): void {

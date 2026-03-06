@@ -30,6 +30,7 @@ export interface ChatSessionDeps {
   containerEl: HTMLElement;
   saveSettings?: (settings: CassandraSettings) => Promise<void>;
   sessionStorage?: SessionStorage;
+  onTitleChanged?: (title: string) => void;
 }
 
 export class ChatSession {
@@ -599,6 +600,13 @@ export class ChatSession {
 
     this.service.setOnSessionCreated((sessionId) => {
       log.info('session_created_callback', { sessionId });
+      this.saveSessionMetadata();
+    });
+
+    this.service.setOnTitleGenerated((title) => {
+      log.info('title_generated', { title });
+      this.conversationTitle = title;
+      this.deps.onTitleChanged?.(title);
       this.saveSessionMetadata();
     });
 
