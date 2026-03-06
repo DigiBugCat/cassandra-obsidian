@@ -561,6 +561,55 @@
   margin-left: auto;
 }
 
+/* ── Slash command dropdown ─────────────────────────────────── */
+
+.cassandra-slash-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 10px;
+  right: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 4px;
+}
+
+.cassandra-slash-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cassandra-slash-item:hover,
+.cassandra-slash-item.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-slash-item-name {
+  font-size: 13px;
+  font-family: var(--font-monospace);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.cassandra-slash-item-hint {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.cassandra-slash-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Mobile touch targets ───────────────────────────────────── */
 
 .is-mobile .cassandra-thinking-toggle,

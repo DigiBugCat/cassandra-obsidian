@@ -14,6 +14,7 @@ import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
 import type { CassandraSettings, ConversationMeta, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
 import { ApprovalModal } from '../../shared/ApprovalModal';
+import { SlashCommandDropdown } from '../../shared/slash/SlashCommandDropdown';
 import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
 import { MessageRenderer } from './rendering/MessageRenderer';
@@ -42,6 +43,7 @@ export class ChatSession {
   private toolbar: ComposerToolbar;
   private imageManager: ImageContextManager;
   private fileManager: FileContextManager;
+  private slashDropdown: SlashCommandDropdown;
 
   // Current conversation metadata
   private conversationId: string;
@@ -128,6 +130,12 @@ export class ChatSession {
     // File context manager (@-mentions + current note)
     this.fileManager = new FileContextManager(deps.app, composer, contextRow, this.inputEl, {
       onFilesChanged: () => { /* chips update themselves */ },
+    });
+
+    // Slash command dropdown (/ trigger)
+    this.slashDropdown = new SlashCommandDropdown(this.inputEl, composer, {
+      getCommands: async () => this.service?.getCommands() ?? [],
+      onSelect: () => { /* command inserted into textarea */ },
     });
 
     // Toolbar
@@ -398,8 +406,9 @@ export class ChatSession {
     this.messageCount = 0;
     this.firstUserMessage = '';
 
-    // Reset file context
+    // Reset file context and slash command cache
     this.fileManager.reset();
+    this.slashDropdown.invalidateCache();
 
     // Re-init
     this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
@@ -646,6 +655,7 @@ export class ChatSession {
     this.toolbar.destroy();
     this.imageManager.destroy();
     this.fileManager.destroy();
+    this.slashDropdown.destroy();
     this.service?.cleanup();
     this.service = null;
     this.state.resetStreamingState();

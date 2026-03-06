@@ -334,6 +334,13 @@ export class RunnerService implements AgentService {
   setPermissionModeSyncCallback(callback: ((sdkMode: string) => void) | null): void { this.permissionModeSyncCallback = callback; }
   setOnSessionCreated(callback: ((sessionId: string) => void) | null): void { this.onSessionCreatedCallback = callback; }
 
+  // ── Slash Commands ─────────────────────────────────────────
+
+  async getCommands(): Promise<{ name: string; description: string; argumentHint: string }[]> {
+    if (!this.runnerSessionId || !this.client.isConnected()) return [];
+    return this.client.getCommands(this.runnerSessionId);
+  }
+
   // ── Fork / Resume ──────────────────────────────────────────────────
 
   setPendingResumeAt(uuid: string | undefined): void { this.pendingResumeAt = uuid; }
