@@ -16,6 +16,7 @@ export interface CassandraSettings {
   runnerUrl: string;
   runnerProjectPath: string;
   runnerVaultName: string;
+  agentName: string;
 
   // Model
   model: ClaudeModel;
@@ -44,6 +45,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerUrl: 'http://localhost:9080',
   runnerProjectPath: '',
   runnerVaultName: '',
+  agentName: 'cassandra',
 
   mcpServersJson: '',
 

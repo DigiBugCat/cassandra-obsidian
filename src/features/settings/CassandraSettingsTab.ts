@@ -64,6 +64,19 @@ export class CassandraSettingsTab extends PluginSettingTab {
           });
       });
 
+    new Setting(containerEl)
+      .setName('Agent name')
+      .setDesc('Persistent identity for this agent — isolates memory and transcripts per agent')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g. cassandra')
+          .setValue(this.plugin.settings.agentName)
+          .onChange(async (value) => {
+            this.plugin.settings.agentName = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
     // ── Model Defaults ──
     containerEl.createEl('h2', { text: 'Model Defaults' });
 

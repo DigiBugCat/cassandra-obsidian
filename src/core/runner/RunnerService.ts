@@ -314,6 +314,7 @@ export class RunnerService implements AgentService {
           additionalDirectories: settings.persistentExternalContextPaths.length > 0
             ? settings.persistentExternalContextPaths : undefined,
           mcpServers: this.parseMcpServers(settings.mcpServersJson),
+          agentId: settings.agentName || undefined,
         };
 
         log.info('create_session_request', { workspace: req.workspace, model: req.model, permissionMode: req.permissionMode, thinking: req.thinking });

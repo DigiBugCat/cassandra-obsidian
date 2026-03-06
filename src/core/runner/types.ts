@@ -22,6 +22,7 @@ export interface RunnerSessionRequest {
   permissionMode?: string;
   allowedPaths?: string[];
   mcpServers?: Record<string, { command: string; args?: string[]; env?: Record<string, string> }>;
+  agentId?: string;
 }
 
 export interface RunnerSessionInfo {
