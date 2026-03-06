@@ -57,6 +57,7 @@ export class RunnerService implements AgentService {
   private currentModel: string | undefined;
   private currentThinkingBudget: string | undefined;
   private currentPermissionMode: string | undefined;
+  private pendingReady: Promise<boolean> | null = null;
 
   // Active query resolvers
   private queryResolvers: Array<{
@@ -270,6 +271,18 @@ export class RunnerService implements AgentService {
   }
 
   async ensureReady(options?: EnsureReadyOptions): Promise<boolean> {
+    // Coalesce concurrent calls: if ensureReady is already in-flight, wait for it
+    if (this.pendingReady) return this.pendingReady;
+
+    this.pendingReady = this.doEnsureReady(options);
+    try {
+      return await this.pendingReady;
+    } finally {
+      this.pendingReady = null;
+    }
+  }
+
+  private async doEnsureReady(options?: EnsureReadyOptions): Promise<boolean> {
     try {
       if (!this.client.isConnected()) await this.client.connect();
 
