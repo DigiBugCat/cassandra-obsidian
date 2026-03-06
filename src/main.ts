@@ -3,32 +3,113 @@ import { Plugin } from 'obsidian';
 
 import type { AgentConfig } from './core/agent';
 import { SessionStorage, VaultFileAdapter } from './core/storage';
-import type { CassandraSettings } from './core/types';
+import type { CassandraSettings, ConversationMeta } from './core/types';
 import { DEFAULT_SETTINGS } from './core/types';
 import { CassandraView, VIEW_TYPE_CASSANDRA } from './features/chat/CassandraView';
+import { ThreadsView, VIEW_TYPE_THREADS } from './features/chat/ThreadsView';
+import { ThreadOrganizerService } from './features/chat/services/ThreadOrganizerService';
+import { ThreadSearchIndex } from './features/chat/services/ThreadSearchIndex';
 import { CassandraSettingsTab } from './features/settings/CassandraSettingsTab';
 
 export default class CassandraPlugin extends Plugin {
   settings: CassandraSettings = { ...DEFAULT_SETTINGS };
+  private adapter: VaultFileAdapter | null = null;
   private sessionStorage: SessionStorage | null = null;
+  private organizer: ThreadOrganizerService | null = null;
+  private searchIndex: ThreadSearchIndex | null = null;
+  private conversationCache: ConversationMeta[] = [];
 
   async onload() {
     await this.loadSettings();
 
     // Init storage
-    const adapter = new VaultFileAdapter(this.app);
-    this.sessionStorage = new SessionStorage(adapter);
+    this.adapter = new VaultFileAdapter(this.app);
+    this.sessionStorage = new SessionStorage(this.adapter);
+    this.organizer = new ThreadOrganizerService({
+      adapter: this.adapter,
+      storage: this.sessionStorage,
+      getConversationList: () => this.sessionStorage!.list(),
+      onCreateConversation: async (folderId) => {
+        // Create a new tab in the main view, return the session metadata id
+        await this.activateView();
+        const view = this.getCassandraView();
+        if (view) {
+          const tabId = view.createNewTab();
+          if (folderId && tabId) {
+            await this.sessionStorage!.updateMeta(tabId, { threadFolderId: folderId });
+          }
+          return tabId || crypto.randomUUID();
+        }
+        return crypto.randomUUID();
+      },
+    });
+    this.searchIndex = new ThreadSearchIndex(
+      this.adapter,
+      () => this.sessionStorage!.list(),
+    );
+
+    // Load initial conversation cache
+    this.refreshConversationCache();
 
     this.registerView(VIEW_TYPE_CASSANDRA, (leaf: WorkspaceLeaf) =>
       new CassandraView(leaf, this.getAgentConfig(), (s) => this.persistSettings(s), this.sessionStorage!),
     );
 
+    this.registerView(VIEW_TYPE_THREADS, (leaf: WorkspaceLeaf) =>
+      new ThreadsView(leaf, {
+        adapter: this.adapter!,
+        storage: this.sessionStorage!,
+        organizer: this.organizer!,
+        searchIndex: this.searchIndex!,
+        getConversationList: () => this.conversationCache,
+        updateConversation: async (id, partial) => {
+          await this.sessionStorage!.updateMeta(id, partial as any);
+          await this.refreshConversationCache();
+        },
+        activateMainView: () => this.activateView(),
+        openConversation: async (conversationId) => {
+          const view = this.getCassandraView();
+          if (view) view.restoreSession(conversationId);
+        },
+        getActiveConversationId: () => {
+          const view = this.getCassandraView();
+          return view?.getActiveSessionId() ?? null;
+        },
+        forkConversation: async (_id) => {
+          // TODO: Wire fork through CassandraView
+        },
+        compactAndForkConversation: async (_id) => {
+          // TODO: Wire compact+fork through CassandraView
+        },
+        createConversationUnsorted: async () => {
+          await this.activateView();
+          const view = this.getCassandraView();
+          view?.createNewTab();
+        },
+        createConversationInFolder: async (folderId) => {
+          await this.activateView();
+          const view = this.getCassandraView();
+          const tabId = view?.createNewTab();
+          if (folderId && tabId) {
+            await this.sessionStorage!.updateMeta(tabId, { threadFolderId: folderId });
+          }
+        },
+      }),
+    );
+
     this.addRibbonIcon('bot', 'Open Cassandra', () => this.activateView());
+    this.addRibbonIcon('list', 'Open Threads', () => this.activateThreadsView());
 
     this.addCommand({
       id: 'open-cassandra',
       name: 'Open chat',
       callback: () => this.activateView(),
+    });
+
+    this.addCommand({
+      id: 'open-threads',
+      name: 'Open threads',
+      callback: () => this.activateThreadsView(),
     });
 
     this.addSettingTab(new CassandraSettingsTab(this.app, this));
@@ -45,6 +126,17 @@ export default class CassandraPlugin extends Plugin {
       vaultPath,
       vaultName: this.app.vault.getName(),
     };
+  }
+
+  private getCassandraView(): CassandraView | null {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_CASSANDRA);
+    return leaves.length > 0 ? (leaves[0].view as CassandraView) : null;
+  }
+
+  private async refreshConversationCache(): Promise<void> {
+    try {
+      this.conversationCache = await this.sessionStorage!.list();
+    } catch { /* ignore */ }
   }
 
   private async loadSettings(): Promise<void> {
@@ -75,6 +167,22 @@ export default class CassandraPlugin extends Plugin {
     const leaf = workspace.getRightLeaf(false);
     if (leaf) {
       await leaf.setViewState({ type: VIEW_TYPE_CASSANDRA, active: true });
+      workspace.revealLeaf(leaf);
+    }
+  }
+
+  private async activateThreadsView(): Promise<void> {
+    const { workspace } = this.app;
+    const leaves = workspace.getLeavesOfType(VIEW_TYPE_THREADS);
+
+    if (leaves.length > 0) {
+      workspace.revealLeaf(leaves[0]);
+      return;
+    }
+
+    const leaf = workspace.getLeftLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: VIEW_TYPE_THREADS, active: true });
       workspace.revealLeaf(leaf);
     }
   }

@@ -345,6 +345,16 @@ export class ChatSession {
     }
   }
 
+  getConversationId(): string { return this.conversationId; }
+
+  async restoreFromId(id: string): Promise<void> {
+    const storage = this.deps.sessionStorage;
+    if (!storage) return;
+    const metas = await storage.list();
+    const meta = metas.find(m => m.id === id);
+    if (meta) await this.restoreSession(meta);
+  }
+
   private async restoreSession(meta: ConversationMeta): Promise<void> {
     if (meta.id === this.conversationId) return;
 

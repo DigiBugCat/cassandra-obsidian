@@ -84,6 +84,35 @@ export class CassandraView extends ItemView {
     })));
   }
 
+  /** Create a new tab and return the tab id. */
+  createNewTab(): string | null {
+    const tab = this.tabManager?.createTab();
+    return tab?.id ?? null;
+  }
+
+  /** Restore a session by its metadata id — finds or creates a tab for it. */
+  restoreSession(conversationId: string): void {
+    // Check if any tab already has this conversation
+    const existing = this.tabManager?.getTabs().find(t =>
+      t.session.getConversationId() === conversationId,
+    );
+    if (existing) {
+      this.tabManager?.activateTab(existing.id);
+      return;
+    }
+    // Create a new tab and restore the session into it
+    const tab = this.tabManager?.createTab();
+    if (tab) {
+      tab.session.restoreFromId(conversationId);
+    }
+  }
+
+  /** Get the active tab's conversation/session id. */
+  getActiveSessionId(): string | null {
+    const tab = this.tabManager?.getActiveTab();
+    return tab?.session.getConversationId() ?? null;
+  }
+
   async onClose(): Promise<void> {
     this.tabManager?.cleanup();
     this.tabManager = null;
