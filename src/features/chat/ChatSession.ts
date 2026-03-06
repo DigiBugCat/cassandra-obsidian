@@ -200,6 +200,7 @@ export class ChatSession {
       getImages: () => this.imageManager.getImages(),
       clearImages: () => this.imageManager.clearImages(),
       getContextXml: () => this.fileManager.getContextXml(),
+      getDocumentBlocks: () => this.fileManager.getDocumentContentBlocks(),
       clearFileContext: () => this.fileManager.clearAfterSend(),
       onSessionStale: () => this.handleStaleSession(),
     });

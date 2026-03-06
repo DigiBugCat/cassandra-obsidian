@@ -1,21 +1,25 @@
 /**
  * FileContextManager — manages attached file mentions and current note context.
  *
- * Handles two types of file attachments:
+ * Handles three types of file attachments:
  * 1. Vault files (@-mentions) — referenced by path, runner reads them via tools
- * 2. External files (dropped from OS) — contents read inline via FileReader
+ * 2. External text files (dropped from OS) — contents read inline via FileReader
+ * 3. External binary files (PDF, images) — base64 encoded, sent as content blocks
  */
 
 import type { App } from 'obsidian';
 import { Notice, setIcon } from 'obsidian';
 
 import { createLogger } from '../../../core/logging';
+import type { UserContentBlock } from '../../../core/runner/types';
 import { MentionDropdown } from '../../../shared/mention/MentionDropdown';
 
 const log = createLogger('FileContextManager');
 
-const MAX_EXTERNAL_FILE_SIZE = 1024 * 1024; // 1MB text content limit
-const READABLE_EXTENSIONS = new Set([
+const MAX_TEXT_FILE_SIZE = 1024 * 1024; // 1MB text content limit
+const MAX_BINARY_FILE_SIZE = 20 * 1024 * 1024; // 20MB for PDFs/binary
+
+const TEXT_EXTENSIONS = new Set([
   'md', 'txt', 'csv', 'json', 'jsonl', 'xml', 'yaml', 'yml', 'toml',
   'html', 'htm', 'css', 'js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go',
   'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'sh', 'bash', 'zsh', 'sql',
@@ -23,10 +27,22 @@ const READABLE_EXTENSIONS = new Set([
   'env', 'ini', 'cfg', 'conf', 'log', 'diff', 'patch',
 ]);
 
-export interface ExternalFileAttachment {
+const DOCUMENT_TYPES: Record<string, string> = {
+  'pdf': 'application/pdf',
+};
+
+export interface ExternalTextFile {
   id: string;
   name: string;
   content: string;
+  size: number;
+}
+
+export interface ExternalDocumentFile {
+  id: string;
+  name: string;
+  base64: string;
+  mediaType: string;
   size: number;
 }
 
@@ -40,7 +56,8 @@ export class FileContextManager {
   private chipContainer: HTMLElement;
   private mentionDropdown: MentionDropdown;
   private attachedFiles: Set<string> = new Set();
-  private externalFiles: Map<string, ExternalFileAttachment> = new Map();
+  private externalTextFiles: Map<string, ExternalTextFile> = new Map();
+  private externalDocuments: Map<string, ExternalDocumentFile> = new Map();
   private callbacks: FileContextCallbacks;
   private currentNotePath: string | null = null;
   private currentNoteSent = false;
@@ -74,42 +91,7 @@ export class FileContextManager {
     this.callbacks.onFilesChanged();
   }
 
-  /** Add an external file dropped from OS — reads content via FileReader. */
-  async addExternalFile(file: File): Promise<void> {
-    // Check extension
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    if (!READABLE_EXTENSIONS.has(ext)) {
-      new Notice(`Unsupported file type: .${ext}`);
-      return;
-    }
-
-    if (file.size > MAX_EXTERNAL_FILE_SIZE) {
-      new Notice(`File too large (${(file.size / 1024).toFixed(0)}KB). Max 1MB for text files.`);
-      return;
-    }
-
-    // Check for duplicate
-    if (this.externalFiles.has(file.name)) return;
-
-    try {
-      const content = await this.readFileAsText(file);
-      const attachment: ExternalFileAttachment = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        content,
-        size: file.size,
-      };
-      this.externalFiles.set(file.name, attachment);
-      this.renderChips();
-      this.callbacks.onFilesChanged();
-      log.info('external_file_added', { name: file.name, size: file.size, contentLength: content.length });
-    } catch (err) {
-      log.warn('external_file_read_failed', { name: file.name, error: String(err) });
-      new Notice(`Failed to read file: ${file.name}`);
-    }
-  }
-
-  /** Try to add a dropped file — resolves vault path or reads external content. */
+  /** Try to add a dropped file — resolves vault path, reads text, or base64 encodes binary. */
   async addDroppedFile(fileName: string, file?: File): Promise<void> {
     // First, try to resolve as a vault file
     const vaultFile = this.app.vault.getFiles().find(f =>
@@ -120,26 +102,101 @@ export class FileContextManager {
       return;
     }
 
-    // External file — read contents
-    if (file) {
-      await this.addExternalFile(file);
+    if (!file) {
+      log.warn('dropped_file_not_resolved', { fileName });
+      new Notice(`Could not find "${fileName}" in vault`);
       return;
     }
 
-    // No File object and not in vault — can't do anything
-    log.warn('dropped_file_not_resolved', { fileName });
-    new Notice(`Could not find "${fileName}" in vault`);
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+
+    // PDF / document files → base64 content block
+    if (DOCUMENT_TYPES[ext]) {
+      await this.addDocumentFile(file, ext);
+      return;
+    }
+
+    // Text files → read content inline
+    if (TEXT_EXTENSIONS.has(ext)) {
+      await this.addTextFile(file);
+      return;
+    }
+
+    new Notice(`Unsupported file type: .${ext}`);
   }
 
-  removeFile(filePath: string): void {
-    this.attachedFiles.delete(filePath);
-    this.externalFiles.delete(filePath);
+  private async addTextFile(file: File): Promise<void> {
+    if (file.size > MAX_TEXT_FILE_SIZE) {
+      new Notice(`File too large (${(file.size / 1024).toFixed(0)}KB). Max 1MB for text files.`);
+      return;
+    }
+    if (this.externalTextFiles.has(file.name)) return;
+
+    try {
+      const content = await this.readAsText(file);
+      this.externalTextFiles.set(file.name, {
+        id: crypto.randomUUID(),
+        name: file.name,
+        content,
+        size: file.size,
+      });
+      this.renderChips();
+      this.callbacks.onFilesChanged();
+      log.info('text_file_added', { name: file.name, size: file.size });
+    } catch (err) {
+      log.warn('text_file_read_failed', { name: file.name, error: String(err) });
+      new Notice(`Failed to read file: ${file.name}`);
+    }
+  }
+
+  private async addDocumentFile(file: File, ext: string): Promise<void> {
+    if (file.size > MAX_BINARY_FILE_SIZE) {
+      new Notice(`File too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Max 20MB.`);
+      return;
+    }
+    if (this.externalDocuments.has(file.name)) return;
+
+    try {
+      const base64 = await this.readAsBase64(file);
+      this.externalDocuments.set(file.name, {
+        id: crypto.randomUUID(),
+        name: file.name,
+        base64,
+        mediaType: DOCUMENT_TYPES[ext],
+        size: file.size,
+      });
+      this.renderChips();
+      this.callbacks.onFilesChanged();
+      log.info('document_file_added', { name: file.name, size: file.size, mediaType: DOCUMENT_TYPES[ext] });
+    } catch (err) {
+      log.warn('document_file_read_failed', { name: file.name, error: String(err) });
+      new Notice(`Failed to read file: ${file.name}`);
+    }
+  }
+
+  removeFile(key: string): void {
+    this.attachedFiles.delete(key);
+    this.externalTextFiles.delete(key);
+    this.externalDocuments.delete(key);
     this.renderChips();
     this.callbacks.onFilesChanged();
   }
 
   getAttachedFiles(): string[] {
     return Array.from(this.attachedFiles);
+  }
+
+  /** Get document content blocks to send alongside the message (PDFs etc). */
+  getDocumentContentBlocks(): UserContentBlock[] {
+    const blocks: UserContentBlock[] = [];
+    for (const doc of this.externalDocuments.values()) {
+      blocks.push({
+        type: 'document',
+        source: { type: 'base64', media_type: doc.mediaType, data: doc.base64 },
+        title: doc.name,
+      });
+    }
+    return blocks;
   }
 
   /** Build XML context string to prepend to the prompt. */
@@ -158,9 +215,15 @@ export class FileContextManager {
       parts.push(`<attached_files>\n${files}\n</attached_files>`);
     }
 
-    // External file contents (inline, since runner can't access them)
-    for (const ext of this.externalFiles.values()) {
+    // External text file contents (inline, since runner can't access them)
+    for (const ext of this.externalTextFiles.values()) {
       parts.push(`<file name="${ext.name}">\n${ext.content}\n</file>`);
+    }
+
+    // Document files are sent as content blocks, not XML — but note their names
+    if (this.externalDocuments.size > 0) {
+      const names = Array.from(this.externalDocuments.values()).map(d => d.name).join(', ');
+      parts.push(`<attached_documents>${names}</attached_documents>`);
     }
 
     return parts.length > 0 ? parts.join('\n') + '\n\n' : '';
@@ -169,14 +232,16 @@ export class FileContextManager {
   /** Clear attached files after send. */
   clearAfterSend(): void {
     this.attachedFiles.clear();
-    this.externalFiles.clear();
+    this.externalTextFiles.clear();
+    this.externalDocuments.clear();
     this.renderChips();
   }
 
   /** Reset for new conversation. */
   reset(): void {
     this.attachedFiles.clear();
-    this.externalFiles.clear();
+    this.externalTextFiles.clear();
+    this.externalDocuments.clear();
     this.currentNoteSent = false;
     this.renderChips();
   }
@@ -189,28 +254,34 @@ export class FileContextManager {
   private renderChips(): void {
     this.chipContainer.empty();
 
-    const allNames: Array<{ key: string; displayName: string; isExternal: boolean }> = [];
+    const allChips: Array<{ key: string; displayName: string; badge?: string }> = [];
 
     for (const filePath of this.attachedFiles) {
       const name = filePath.split('/').pop()?.replace(/\.md$/, '') ?? filePath;
-      allNames.push({ key: filePath, displayName: name, isExternal: false });
+      allChips.push({ key: filePath, displayName: name });
+    }
+    for (const ext of this.externalTextFiles.values()) {
+      allChips.push({ key: ext.name, displayName: ext.name, badge: 'text' });
+    }
+    for (const doc of this.externalDocuments.values()) {
+      allChips.push({ key: doc.name, displayName: doc.name, badge: 'doc' });
     }
 
-    for (const ext of this.externalFiles.values()) {
-      allNames.push({ key: ext.name, displayName: ext.name, isExternal: true });
-    }
-
-    if (allNames.length === 0) {
+    if (allChips.length === 0) {
       this.updateContextRowVisibility();
       return;
     }
 
-    for (const { key, displayName, isExternal } of allNames) {
+    for (const { key, displayName, badge } of allChips) {
       const chip = this.chipContainer.createEl('div', {
-        cls: `cassandra-file-chip${isExternal ? ' is-external' : ''}`,
+        cls: `cassandra-file-chip${badge ? ` is-${badge}` : ''}`,
       });
       chip.createEl('span', { cls: 'cassandra-file-chip-name', text: displayName });
-      chip.setAttribute('title', isExternal ? `External: ${key}` : key);
+      chip.setAttribute('title', key);
+
+      if (badge) {
+        chip.createEl('span', { cls: 'cassandra-file-chip-badge', text: badge.toUpperCase() });
+      }
 
       const removeBtn = chip.createEl('span', { cls: 'cassandra-file-chip-remove' });
       setIcon(removeBtn, 'x');
@@ -225,11 +296,11 @@ export class FileContextManager {
 
   private updateContextRowVisibility(): void {
     const hasImages = this.contextRowEl.querySelector('.cassandra-image-preview')?.children.length ?? 0;
-    const hasFiles = this.attachedFiles.size > 0 || this.externalFiles.size > 0;
+    const hasFiles = this.attachedFiles.size > 0 || this.externalTextFiles.size > 0 || this.externalDocuments.size > 0;
     this.contextRowEl.classList.toggle('has-content', hasFiles || hasImages > 0);
   }
 
-  private readFileAsText(file: File): Promise<string> {
+  private readAsText(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
@@ -238,9 +309,24 @@ export class FileContextManager {
     });
   }
 
+  private readAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Strip data URL prefix: "data:application/pdf;base64,..."
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
   destroy(): void {
     this.mentionDropdown.destroy();
     this.attachedFiles.clear();
-    this.externalFiles.clear();
+    this.externalTextFiles.clear();
+    this.externalDocuments.clear();
   }
 }

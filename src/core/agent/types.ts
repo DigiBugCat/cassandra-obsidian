@@ -5,6 +5,7 @@
  * and swappable without importing Obsidian.
  */
 
+import type { UserContentBlock } from '../runner/types';
 import type {
   CassandraSettings,
   ChatMessage,
@@ -23,6 +24,7 @@ export interface AgentConfig {
 /** Options for a single query. */
 export interface QueryOptions {
   model?: string;
+  documentBlocks?: UserContentBlock[];
 }
 
 /** Options for ensuring the service is ready. */

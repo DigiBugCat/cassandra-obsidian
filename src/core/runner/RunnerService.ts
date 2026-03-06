@@ -115,14 +115,18 @@ export class RunnerService implements AgentService {
     yield { type: 'sdk_user_uuid', uuid };
 
     // Build multimodal content blocks
+    const docBlocks = queryOptions?.documentBlocks ?? [];
     let content: UserContentBlock[] | undefined;
-    if (images && images.length > 0) {
+    if ((images && images.length > 0) || docBlocks.length > 0) {
       content = [];
-      for (const img of images) {
+      for (const img of images ?? []) {
         content.push({
           type: 'image',
           source: { type: 'base64', media_type: img.mediaType, data: img.data },
         });
+      }
+      for (const block of docBlocks) {
+        content.push(block);
       }
       if (prompt.trim()) {
         content.push({ type: 'text', text: prompt });

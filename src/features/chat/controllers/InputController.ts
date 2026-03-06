@@ -1,5 +1,6 @@
 import type { AgentService } from '../../../core/agent';
 import { createLogger } from '../../../core/logging';
+import type { UserContentBlock } from '../../../core/runner/types';
 import type { ChatMessage, ImageAttachment } from '../../../core/types';
 import type { MessageRenderer } from '../rendering/MessageRenderer';
 import type { ChatState } from '../state';
@@ -18,6 +19,7 @@ export interface InputControllerDeps {
   getImages?: () => ImageAttachment[];
   clearImages?: () => void;
   getContextXml?: () => string;
+  getDocumentBlocks?: () => UserContentBlock[];
   clearFileContext?: () => void;
   onSessionStale?: (retryPrompt?: string) => Promise<boolean>;
 }
@@ -101,7 +103,13 @@ export class InputController {
 
     try {
       const fullPrompt = contextXml ? contextXml + prompt : prompt;
-      const stream = service.query(fullPrompt, images.length > 0 ? images : undefined);
+      const documentBlocks = this.deps.getDocumentBlocks?.() ?? [];
+      const stream = service.query(
+        fullPrompt,
+        images.length > 0 ? images : undefined,
+        undefined,
+        documentBlocks.length > 0 ? { documentBlocks } : undefined,
+      );
       for await (const chunk of stream) {
         // Discard events from a previous generation (e.g. after cancel + new send)
         if (state.streamGeneration !== gen) {
