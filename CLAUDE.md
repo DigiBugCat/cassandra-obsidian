@@ -129,6 +129,9 @@ RunnerClient reconnect logic creates stale subscriptions. Not critical but adds 
 
 | Feature | Priority | Notes |
 |---|---|---|
-| **Threads sidebar** | Medium | Expandable tree view of all conversations with folders, pin, archive. Currently history is a header dropdown only. Type fields (`threadFolderId`, `threadPinned`, `threadArchived`) exist in `chat.ts` but no UI. |
-| **Slash commands** | Low | `/` prefix in composer to trigger runner slash commands. `RunnerClient.getCommands()` exists but no UI. |
+| **Slash commands** | High | `/` prefix in composer to trigger runner slash commands. `RunnerClient.getCommands()` exists, `SlashCommandDropdown` exists but needs wiring to actually execute commands. |
 | **iOS testing** | Medium | Test on actual iOS Obsidian device. |
+
+### Design Decisions
+- **MCP servers**: HTTP/SSE transport only. No stdio MCP servers — warm pool stays simple (profile key = vault + agentId), MCP configs are just URLs in `RunnerSessionRequest.mcpServers`.
+- **No SDK fallback**: Runner-first architecture only. No desktop-only Node.js SDK backend.

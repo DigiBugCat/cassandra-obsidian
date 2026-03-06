@@ -91,8 +91,10 @@ export default class CassandraPlugin extends Plugin {
           const view = this.getCassandraView();
           if (view) await view.forkConversation(id);
         },
-        compactAndForkConversation: async (_id) => {
-          // Compact-and-fork needs runner protocol changes — deferred
+        compactAndForkConversation: async (id) => {
+          await this.activateView();
+          const view = this.getCassandraView();
+          if (view) await view.compactAndForkConversation(id);
         },
         createConversationUnsorted: async () => {
           await this.activateView();

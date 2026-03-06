@@ -145,6 +145,41 @@ export class CassandraView extends ItemView {
     }
   }
 
+  /** Fork + compact a conversation — creates a forked session then schedules compaction. */
+  async compactAndForkConversation(conversationId: string): Promise<void> {
+    if (!this.sessionStorage) return;
+
+    const sessionMeta = await this.sessionStorage.load(conversationId);
+    if (!sessionMeta?.runnerSessionId) {
+      new Notice('Cannot compact & fork: no runner session found');
+      return;
+    }
+
+    try {
+      const client = new RunnerClient(this.config.settings.runnerUrl || 'http://localhost:9080');
+      const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
+
+      // Schedule compaction on the forked session (runs on next query)
+      await client.compactSession(
+        forkResult.session_id,
+        this.config.settings.compactInstructions || undefined,
+      );
+
+      // Create a new tab and attach
+      const tab = this.tabManager?.createTab();
+      if (!tab) return;
+
+      tab.session.attachToRunnerSession(forkResult.session_id);
+      tab.title = `Compact fork of ${sessionMeta.title}`;
+      this.updateTabBar();
+
+      log.info('compact_and_fork_conversation', { source: conversationId, forked: forkResult.session_id });
+    } catch (err) {
+      log.warn('compact_and_fork_failed', { conversationId, error: String(err) });
+      new Notice(`Compact & fork failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
   /** Get the active tab's conversation/session id. */
   getActiveSessionId(): string | null {
     const tab = this.tabManager?.getActiveTab();

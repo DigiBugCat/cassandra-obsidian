@@ -131,6 +131,18 @@ export class RunnerClient extends EventEmitter {
     return resp.json;
   }
 
+  async compactSession(id: string, customInstructions?: string): Promise<void> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/context/compact`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(customInstructions ? { custom_instructions: customInstructions } : {}),
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to compact session: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+  }
+
   async generateTitle(id: string, userMessage: string, assistantMessage?: string): Promise<string> {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/generate-title`,

@@ -124,6 +124,7 @@ export class SlashCommandDropdown {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       this.selectedIndex = Math.min(this.selectedIndex + 1, this.items.length - 1);
       this.updateSelection();
       return;
@@ -131,6 +132,7 @@ export class SlashCommandDropdown {
 
     if (e.key === 'ArrowUp') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
       this.updateSelection();
       return;
@@ -139,7 +141,7 @@ export class SlashCommandDropdown {
     if (e.key === 'Enter' || e.key === 'Tab') {
       if (this.items.length > 0) {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         this.selectItem(this.selectedIndex);
         return;
       }
@@ -147,6 +149,7 @@ export class SlashCommandDropdown {
 
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       this.close();
     }
   }
