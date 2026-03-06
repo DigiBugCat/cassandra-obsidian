@@ -12,7 +12,7 @@ import type { AgentConfig, AgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
-import type { CassandraSettings, ChatMessage, ConversationMeta, ThinkingBudget, UsageInfo } from '../../core/types';
+import type { CassandraSettings, ChatMessage, ConversationMeta, ThinkingBudget, ToolCallInfo, UsageInfo } from '../../core/types';
 import { ApprovalModal } from '../../shared/ApprovalModal';
 import { SlashCommandDropdown } from '../../shared/slash/SlashCommandDropdown';
 import { InputController } from './controllers/InputController';
@@ -423,17 +423,45 @@ export class ChatSession {
       const events = await this.service?.getTranscript();
       if (!events || events.length === 0) return;
 
-      const messages = this.parseTranscriptEvents(events);
+      // Build a tool_use_id → result map from the transcript for pairing
+      const toolResults = new Map<string, { content: string; is_error: boolean }>();
+      for (const event of events) {
+        if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
+          for (const block of event.message.content) {
+            if (block.type === 'tool_result' && block.tool_use_id) {
+              const text = typeof block.content === 'string'
+                ? block.content
+                : Array.isArray(block.content)
+                  ? block.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
+                  : '';
+              toolResults.set(block.tool_use_id, { content: text, is_error: !!block.is_error });
+            }
+          }
+        }
+      }
+
+      const messages = this.parseTranscriptEvents(events, toolResults);
       for (const msg of messages) {
         this.state.addMessage(msg);
         const msgEl = this.renderer.addMessage(msg);
 
-        // Render assistant markdown content
-        if (msg.role === 'assistant' && msg.content) {
+        if (msg.role === 'assistant') {
           const contentEl = msgEl.querySelector('.cassandra-message-content') as HTMLElement;
-          if (contentEl) {
-            await this.renderer.renderContent(contentEl, msg.content);
-            this.renderer.addTextCopyButton(contentEl, msg.content);
+          if (!contentEl) continue;
+
+          // Render tool calls
+          if (msg.toolCalls && msg.toolCalls.length > 0) {
+            const { renderStoredToolCall } = await import('./rendering');
+            for (const tc of msg.toolCalls) {
+              renderStoredToolCall(contentEl, tc);
+            }
+          }
+
+          // Render text content
+          if (msg.content) {
+            const textEl = contentEl.createDiv({ cls: 'cassandra-text-block' });
+            await this.renderer.renderContent(textEl, msg.content);
+            this.renderer.addTextCopyButton(textEl, msg.content);
           }
         }
       }
@@ -445,12 +473,15 @@ export class ChatSession {
   }
 
   /** Parse JSONL transcript events into ChatMessage[]. */
-  private parseTranscriptEvents(events: any[]): ChatMessage[] {
+  private parseTranscriptEvents(
+    events: any[],
+    toolResults: Map<string, { content: string; is_error: boolean }>,
+  ): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
     for (const event of events) {
       if (event.type === 'user') {
-        const text = this.extractTextFromMessage(event.message);
+        const text = this.extractText(event.message);
         if (text) {
           messages.push({
             id: event.uuid || crypto.randomUUID(),
@@ -461,16 +492,20 @@ export class ChatSession {
           });
         }
       } else if (event.type === 'assistant') {
-        const text = this.extractTextFromMessage(event.message);
-        if (text) {
-          messages.push({
-            id: event.uuid || crypto.randomUUID(),
-            role: 'assistant',
-            content: text,
-            timestamp: Date.now(),
-            sdkAssistantUuid: event.uuid,
-          });
-        }
+        const text = this.extractText(event.message);
+        const toolCalls = this.extractToolCalls(event.message, toolResults);
+
+        // Skip empty assistant messages (e.g. pure tool_result carriers)
+        if (!text && toolCalls.length === 0) continue;
+
+        messages.push({
+          id: event.uuid || crypto.randomUUID(),
+          role: 'assistant',
+          content: text,
+          timestamp: Date.now(),
+          sdkAssistantUuid: event.uuid,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        });
       }
     }
 
@@ -478,27 +513,40 @@ export class ChatSession {
   }
 
   /** Extract text content from a transcript message. */
-  private extractTextFromMessage(message: any): string {
+  private extractText(message: any): string {
     if (!message) return '';
-
-    // String content
     if (typeof message.content === 'string') return message.content;
-
-    // Array of content blocks
     if (Array.isArray(message.content)) {
-      const textParts: string[] = [];
-      for (const block of message.content) {
-        if (block.type === 'text' && block.text) {
-          textParts.push(block.text);
-        }
-      }
-      return textParts.join('\n\n');
+      return message.content
+        .filter((b: any) => b.type === 'text' && b.text)
+        .map((b: any) => b.text)
+        .join('\n\n');
     }
-
-    // Role-level text
     if (typeof message === 'string') return message;
-
     return '';
+  }
+
+  /** Extract tool_use blocks from a transcript assistant message. */
+  private extractToolCalls(
+    message: any,
+    toolResults: Map<string, { content: string; is_error: boolean }>,
+  ): ToolCallInfo[] {
+    if (!message || !Array.isArray(message.content)) return [];
+
+    const toolCalls: ToolCallInfo[] = [];
+    for (const block of message.content) {
+      if (block.type === 'tool_use' && block.id && block.name) {
+        const result = toolResults.get(block.id);
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          input: block.input || {},
+          status: result ? (result.is_error ? 'error' : 'completed') : 'completed',
+          result: result?.content,
+        });
+      }
+    }
+    return toolCalls;
   }
 
   // ── New conversation ─────────────────────────────────────────

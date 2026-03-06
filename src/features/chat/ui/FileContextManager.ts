@@ -8,7 +8,7 @@
  */
 
 import type { App } from 'obsidian';
-import { Notice, setIcon } from 'obsidian';
+import { MarkdownView, Notice, setIcon } from 'obsidian';
 
 import { createLogger } from '../../../core/logging';
 import type { UserContentBlock } from '../../../core/runner/types';
@@ -93,12 +93,23 @@ export class FileContextManager {
 
   /** Try to add a dropped file — resolves vault path, reads text, or base64 encodes binary. */
   async addDroppedFile(fileName: string, file?: File): Promise<void> {
-    // First, try to resolve as a vault file
-    const vaultFile = this.app.vault.getFiles().find(f =>
+    // Try to resolve as a vault file (match by name, disambiguate by size)
+    const candidates = this.app.vault.getFiles().filter(f =>
       f.name === fileName || f.path === fileName,
     );
-    if (vaultFile) {
-      this.addFile(vaultFile.path);
+    if (candidates.length === 1) {
+      this.addFile(candidates[0].path);
+      return;
+    }
+    if (candidates.length > 1 && file) {
+      // Disambiguate by file size
+      const match = candidates.find(f => f.stat.size === file.size);
+      if (match) {
+        this.addFile(match.path);
+        return;
+      }
+      // Fall back to first match
+      this.addFile(candidates[0].path);
       return;
     }
 
@@ -209,6 +220,12 @@ export class FileContextManager {
       this.currentNoteSent = true;
     }
 
+    // Selected text from active editor
+    const selection = this.getEditorSelection();
+    if (selection) {
+      parts.push(`<selected_text file="${selection.filePath}">\n${selection.text}\n</selected_text>`);
+    }
+
     // Attached vault file mentions (runner reads these via tools)
     if (this.attachedFiles.size > 0) {
       const files = Array.from(this.attachedFiles).map(f => f).join('\n');
@@ -249,6 +266,19 @@ export class FileContextManager {
   private updateCurrentNote(): void {
     const file = this.app.workspace.getActiveFile();
     this.currentNotePath = file ? file.path : null;
+  }
+
+  private getEditorSelection(): { text: string; filePath: string } | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) return null;
+
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!markdownView?.editor) return null;
+
+    const selection = markdownView.editor.getSelection();
+    if (!selection?.trim()) return null;
+
+    return { text: selection, filePath: activeFile.path };
   }
 
   private renderChips(): void {
