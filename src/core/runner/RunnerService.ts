@@ -135,6 +135,17 @@ export class RunnerService implements AgentService {
 
     this.applyDynamicOptions();
 
+    // Compute thinking tokens for this send
+    const budgetConfig = THINKING_BUDGETS.find(b => b.value === this.config.settings.thinkingBudget);
+    const maxThinkingTokens = budgetConfig?.tokens ?? 0;
+
+    const sendOpts = {
+      content,
+      model: queryOptions?.model || this.currentModel,
+      // Always pass thinking tokens so the runner respects the current setting
+      maxThinkingTokens: maxThinkingTokens > 0 ? maxThinkingTokens : 0,
+    };
+
     // Fork if pendingResumeAt is set
     if (this.pendingResumeAt) {
       try {
@@ -153,16 +164,10 @@ export class RunnerService implements AgentService {
       } catch (err) {
         log.warn('fork_failed', { error: String(err) });
         this.pendingResumeAt = undefined;
-        this.client.send(this.runnerSessionId, prompt, {
-          content,
-          model: queryOptions?.model || this.currentModel,
-        });
+        this.client.send(this.runnerSessionId, prompt, sendOpts);
       }
     } else {
-      this.client.send(this.runnerSessionId, prompt, {
-        content,
-        model: queryOptions?.model || this.currentModel,
-      });
+      this.client.send(this.runnerSessionId, prompt, sendOpts);
     }
 
     yield { type: 'sdk_user_sent', uuid };
@@ -407,7 +412,18 @@ export class RunnerService implements AgentService {
     let sawStreamText = false;
 
     const onEvent = (event: RunnerEvent) => {
-      log.debug('runner_event', { type: event.type, subtype: event.subtype, error: event.error, resolvers: this.queryResolvers.length });
+      if (event.type === 'stream_event') {
+        const inner = event.event;
+        log.debug('runner_event', {
+          type: event.type,
+          innerType: inner?.type,
+          deltaType: inner?.delta?.type,
+          textPreview: inner?.delta?.type === 'text_delta' ? (inner.delta.text as string)?.slice(0, 40) : undefined,
+          resolvers: this.queryResolvers.length,
+        });
+      } else {
+        log.debug('runner_event', { type: event.type, subtype: event.subtype, error: event.error, resolvers: this.queryResolvers.length });
+      }
 
       if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
         this.sdkSessionId = event.session_id;
