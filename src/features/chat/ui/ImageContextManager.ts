@@ -13,6 +13,17 @@ import type { ImageAttachment, ImageMediaType } from '../../../core/types';
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_IMAGES = 5;
 
+/** Parse obsidian://open?vault=...&file=... URL into a vault-relative path. */
+function parseObsidianDragUrl(text: string): string | null {
+  if (!text.startsWith('obsidian://')) return null;
+  try {
+    const url = new URL(text);
+    const filePath = url.searchParams.get('file');
+    return filePath || null;
+  } catch { /* not a valid URL */ }
+  return null;
+}
+
 const SUPPORTED_TYPES: Record<string, ImageMediaType> = {
   'image/jpeg': 'image/jpeg',
   'image/png': 'image/png',
@@ -132,16 +143,16 @@ export class ImageContextManager {
         if (handledImage) return;
       }
 
-      // Handle Obsidian internal drag (text/plain contains vault-relative path)
+      // Handle Obsidian internal drag (obsidian:// URL with file path)
       if (textData && this.callbacks.onFileDropped) {
-        const path = textData.trim();
-        if (path && !path.startsWith('http') && (path.endsWith('.md') || path.includes('/'))) {
-          this.callbacks.onFileDropped(path);
+        const vaultPath = parseObsidianDragUrl(textData.trim());
+        if (vaultPath) {
+          this.callbacks.onFileDropped(vaultPath);
           return;
         }
       }
 
-      // Handle non-image file drops (Obsidian file explorer or OS files)
+      // Handle non-image file drops from OS
       if (files && files.length > 0 && this.callbacks.onFileDropped) {
         for (const file of Array.from(files)) {
           if (!SUPPORTED_TYPES[file.type] && file.name) {

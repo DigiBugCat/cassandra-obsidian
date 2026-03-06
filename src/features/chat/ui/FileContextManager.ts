@@ -93,23 +93,19 @@ export class FileContextManager {
 
   /** Try to add a dropped file — resolves vault path, reads text, or base64 encodes binary. */
   async addDroppedFile(fileName: string, file?: File): Promise<void> {
-    // Try to resolve as a vault file (match by name, disambiguate by size)
+    // Try to resolve as a vault file
+    // Obsidian drag URLs may omit the .md extension, so try both
     const candidates = this.app.vault.getFiles().filter(f =>
-      f.name === fileName || f.path === fileName,
+      f.name === fileName || f.path === fileName || f.path === `${fileName}.md`,
     );
-    if (candidates.length === 1) {
-      this.addFile(candidates[0].path);
-      return;
-    }
-    if (candidates.length > 1 && file) {
-      // Disambiguate by file size
-      const match = candidates.find(f => f.stat.size === file.size);
-      if (match) {
-        this.addFile(match.path);
-        return;
+    if (candidates.length >= 1) {
+      // If multiple matches and we have a File, disambiguate by size
+      if (candidates.length > 1 && file) {
+        const match = candidates.find(f => f.stat.size === file.size);
+        this.addFile((match ?? candidates[0]).path);
+      } else {
+        this.addFile(candidates[0].path);
       }
-      // Fall back to first match
-      this.addFile(candidates[0].path);
       return;
     }
 
