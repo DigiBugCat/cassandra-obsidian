@@ -22,6 +22,9 @@ export interface SessionMetadata {
   titleGenerationStatus?: 'pending' | 'success' | 'failed';
   messageCount: number;
   preview: string;
+  threadFolderId?: string | null;
+  threadPinned?: boolean;
+  threadArchived?: boolean;
 }
 
 export class SessionStorage {
@@ -48,6 +51,12 @@ export class SessionStorage {
     await this.adapter.delete(filePath);
   }
 
+  async updateMeta(id: string, partial: Partial<SessionMetadata>): Promise<void> {
+    const existing = await this.load(id);
+    if (!existing) return;
+    await this.save({ ...existing, ...partial, id });
+  }
+
   async list(): Promise<ConversationMeta[]> {
     const metas: ConversationMeta[] = [];
     try {
@@ -66,6 +75,9 @@ export class SessionStorage {
             messageCount: meta.messageCount,
             preview: meta.preview,
             titleGenerationStatus: meta.titleGenerationStatus,
+            threadFolderId: meta.threadFolderId,
+            threadPinned: meta.threadPinned,
+            threadArchived: meta.threadArchived,
           });
         } catch { /* skip corrupt files */ }
       }
