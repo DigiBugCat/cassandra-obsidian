@@ -131,7 +131,7 @@ export class ChatSession {
     // Image context manager (paste/drop, delegates non-image drops to file manager)
     this.imageManager = new ImageContextManager(composer, contextRow, this.inputEl, {
       onImagesChanged: () => { /* context row updates itself */ },
-      onFileDropped: (filePath) => this.fileManager.addFile(filePath),
+      onFileDropped: (fileName, file) => this.fileManager.addDroppedFile(fileName, file),
     });
 
     // Slash command dropdown (/ trigger)

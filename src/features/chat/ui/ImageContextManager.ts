@@ -8,7 +8,10 @@
 
 import { Notice, setIcon } from 'obsidian';
 
+import { createLogger } from '../../../core/logging';
 import type { ImageAttachment, ImageMediaType } from '../../../core/types';
+
+const log = createLogger('ImageContextManager');
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_IMAGES = 5;
@@ -22,7 +25,7 @@ const SUPPORTED_TYPES: Record<string, ImageMediaType> = {
 
 export interface ImageContextCallbacks {
   onImagesChanged: () => void;
-  onFileDropped?: (filePath: string) => void;
+  onFileDropped?: (fileName: string, file?: File) => void;
 }
 
 export class ImageContextManager {
@@ -117,8 +120,16 @@ export class ImageContextManager {
       dragCounter = 0;
       this.dropOverlay!.style.display = 'none';
 
-      // Handle standard file drops (external files or Obsidian file explorer)
-      const files = e.dataTransfer?.files;
+      // Debug: log all dataTransfer content
+      const dt = e.dataTransfer;
+      const types = dt ? Array.from(dt.types) : [];
+      const textData = dt?.getData('text/plain') ?? '';
+      const textHtml = dt?.getData('text/html') ?? '';
+      const files = dt?.files;
+      const fileList = files ? Array.from(files).map(f => ({ name: f.name, type: f.type, size: f.size })) : [];
+      log.info('drop_event', { types, textData: textData.slice(0, 200), textHtml: textHtml.slice(0, 200), files: fileList });
+
+      // Handle image file drops first
       if (files && files.length > 0) {
         let handledImage = false;
         for (const file of Array.from(files)) {
@@ -131,9 +142,7 @@ export class ImageContextManager {
       }
 
       // Handle Obsidian internal drag (text/plain contains vault-relative path)
-      const textData = e.dataTransfer?.getData('text/plain');
       if (textData && this.callbacks.onFileDropped) {
-        // Obsidian drags file paths; filter to likely vault paths
         const path = textData.trim();
         if (path && !path.startsWith('http') && (path.endsWith('.md') || path.includes('/'))) {
           this.callbacks.onFileDropped(path);
@@ -141,11 +150,11 @@ export class ImageContextManager {
         }
       }
 
-      // Handle non-image file drops via the File API (e.g. dragging .md from OS)
+      // Handle non-image file drops (Obsidian file explorer or OS files)
       if (files && files.length > 0 && this.callbacks.onFileDropped) {
         for (const file of Array.from(files)) {
           if (!SUPPORTED_TYPES[file.type] && file.name) {
-            this.callbacks.onFileDropped(file.name);
+            this.callbacks.onFileDropped(file.name, file);
           }
         }
       }
