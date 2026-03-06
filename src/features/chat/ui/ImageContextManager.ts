@@ -8,10 +8,7 @@
 
 import { Notice, setIcon } from 'obsidian';
 
-import { createLogger } from '../../../core/logging';
 import type { ImageAttachment, ImageMediaType } from '../../../core/types';
-
-const log = createLogger('ImageContextManager');
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_IMAGES = 5;
@@ -120,14 +117,8 @@ export class ImageContextManager {
       dragCounter = 0;
       this.dropOverlay!.style.display = 'none';
 
-      // Debug: log all dataTransfer content
-      const dt = e.dataTransfer;
-      const types = dt ? Array.from(dt.types) : [];
-      const textData = dt?.getData('text/plain') ?? '';
-      const textHtml = dt?.getData('text/html') ?? '';
-      const files = dt?.files;
-      const fileList = files ? Array.from(files).map(f => ({ name: f.name, type: f.type, size: f.size })) : [];
-      log.info('drop_event', { types, textData: textData.slice(0, 200), textHtml: textHtml.slice(0, 200), files: fileList });
+      const textData = e.dataTransfer?.getData('text/plain') ?? '';
+      const files = e.dataTransfer?.files;
 
       // Handle image file drops first
       if (files && files.length > 0) {
