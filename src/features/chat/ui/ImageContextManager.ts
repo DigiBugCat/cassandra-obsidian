@@ -22,6 +22,7 @@ const SUPPORTED_TYPES: Record<string, ImageMediaType> = {
 
 export interface ImageContextCallbacks {
   onImagesChanged: () => void;
+  onFileDropped?: (filePath: string) => void;
 }
 
 export class ImageContextManager {
@@ -30,6 +31,7 @@ export class ImageContextManager {
   private previewEl: HTMLElement;
   private callbacks: ImageContextCallbacks;
   private dropOverlay: HTMLElement | null = null;
+  private dropOverlayLabel: HTMLElement | null = null;
 
   constructor(
     composerEl: HTMLElement,
@@ -82,7 +84,7 @@ export class ImageContextManager {
 
   private setupDragAndDrop(composerEl: HTMLElement): void {
     this.dropOverlay = composerEl.createEl('div', { cls: 'cassandra-drop-overlay' });
-    this.dropOverlay.createEl('span', { text: 'Drop image here' });
+    this.dropOverlayLabel = this.dropOverlay.createEl('span', { text: 'Drop file here' });
     this.dropOverlay.style.display = 'none';
 
     let dragCounter = 0;
@@ -90,8 +92,11 @@ export class ImageContextManager {
     composerEl.addEventListener('dragenter', (e) => {
       e.preventDefault();
       dragCounter++;
-      if (this.hasImageInDragEvent(e)) {
+      if (this.hasDraggableContent(e)) {
         this.dropOverlay!.style.display = '';
+        // Update label based on drag content
+        const hasImage = this.hasImageInDragEvent(e);
+        this.dropOverlayLabel!.textContent = hasImage ? 'Drop image here' : 'Drop file here';
       }
     });
 
@@ -112,21 +117,55 @@ export class ImageContextManager {
       dragCounter = 0;
       this.dropOverlay!.style.display = 'none';
 
+      // Handle standard file drops (external files or Obsidian file explorer)
       const files = e.dataTransfer?.files;
-      if (!files) return;
+      if (files && files.length > 0) {
+        let handledImage = false;
+        for (const file of Array.from(files)) {
+          if (SUPPORTED_TYPES[file.type]) {
+            await this.addImageFile(file, 'drop');
+            handledImage = true;
+          }
+        }
+        if (handledImage) return;
+      }
 
-      for (const file of Array.from(files)) {
-        if (SUPPORTED_TYPES[file.type]) {
-          await this.addImageFile(file, 'drop');
+      // Handle Obsidian internal drag (text/plain contains vault-relative path)
+      const textData = e.dataTransfer?.getData('text/plain');
+      if (textData && this.callbacks.onFileDropped) {
+        // Obsidian drags file paths; filter to likely vault paths
+        const path = textData.trim();
+        if (path && !path.startsWith('http') && (path.endsWith('.md') || path.includes('/'))) {
+          this.callbacks.onFileDropped(path);
+          return;
+        }
+      }
+
+      // Handle non-image file drops via the File API (e.g. dragging .md from OS)
+      if (files && files.length > 0 && this.callbacks.onFileDropped) {
+        for (const file of Array.from(files)) {
+          if (!SUPPORTED_TYPES[file.type] && file.name) {
+            this.callbacks.onFileDropped(file.name);
+          }
         }
       }
     });
   }
 
-  private hasImageInDragEvent(e: DragEvent): boolean {
+  private hasDraggableContent(e: DragEvent): boolean {
     const types = e.dataTransfer?.types;
     if (!types) return false;
-    return Array.from(types).includes('Files');
+    const arr = Array.from(types);
+    return arr.includes('Files') || arr.includes('text/plain');
+  }
+
+  private hasImageInDragEvent(e: DragEvent): boolean {
+    const items = e.dataTransfer?.items;
+    if (!items) return false;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) return true;
+    }
+    return false;
   }
 
   // ── Image processing ───────────────────────────────────────────

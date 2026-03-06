@@ -123,14 +123,15 @@ export class ChatSession {
       attr: { placeholder: 'Message Cassandra...', rows: '3' },
     });
 
-    // Image context manager (paste/drop)
-    this.imageManager = new ImageContextManager(composer, contextRow, this.inputEl, {
-      onImagesChanged: () => { /* context row updates itself */ },
-    });
-
-    // File context manager (@-mentions + current note)
+    // File context manager (@-mentions + current note + drops)
     this.fileManager = new FileContextManager(deps.app, composer, contextRow, this.inputEl, {
       onFilesChanged: () => { /* chips update themselves */ },
+    });
+
+    // Image context manager (paste/drop, delegates non-image drops to file manager)
+    this.imageManager = new ImageContextManager(composer, contextRow, this.inputEl, {
+      onImagesChanged: () => { /* context row updates itself */ },
+      onFileDropped: (filePath) => this.fileManager.addFile(filePath),
     });
 
     // Slash command dropdown (/ trigger)
