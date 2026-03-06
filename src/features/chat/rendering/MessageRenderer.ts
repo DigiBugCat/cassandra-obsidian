@@ -80,18 +80,20 @@ export class MessageRenderer {
   // ============================================
 
   async renderContent(el: HTMLElement, markdown: string): Promise<void> {
-    el.empty();
+    // Render into a detached container first, then swap in atomically
+    // to avoid the flash of empty content between el.empty() and render completion.
+    const staging = createEl('div');
 
     try {
       await MarkdownRenderer.render(
         this.deps.app,
         markdown,
-        el,
+        staging,
         '',
         this.deps.component,
       );
 
-      el.querySelectorAll('pre').forEach((pre) => {
+      staging.querySelectorAll('pre').forEach((pre) => {
         if (pre.parentElement?.classList.contains('cassandra-code-wrapper')) return;
 
         const wrapper = createEl('div', { cls: 'cassandra-code-wrapper' });
@@ -123,7 +125,14 @@ export class MessageRenderer {
           wrapper.appendChild(copyBtn);
         }
       });
+
+      // Atomic swap: replace old content in one operation
+      el.empty();
+      while (staging.firstChild) {
+        el.appendChild(staging.firstChild);
+      }
     } catch {
+      el.empty();
       el.createDiv({
         cls: 'cassandra-render-error',
         text: 'Failed to render message content.',
