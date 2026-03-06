@@ -6,6 +6,7 @@ import type { VaultFileAdapter } from '../../core/storage/VaultFileAdapter';
 import type { ConversationMeta } from '../../core/types';
 import type { ThreadOrganizerService } from './services/ThreadOrganizerService';
 import type { ThreadSearchIndex } from './services/ThreadSearchIndex';
+import type { ThreadSortService } from './services/ThreadSortService';
 import { ThreadsPane } from './ui/ThreadsPane';
 
 export const VIEW_TYPE_THREADS = 'cassandra-threads-view';
@@ -15,6 +16,7 @@ export interface ThreadsViewDeps {
   storage: SessionStorage;
   organizer: ThreadOrganizerService;
   searchIndex: ThreadSearchIndex;
+  sortService: ThreadSortService;
   /** Returns the current in-memory conversation list (synchronous snapshot). */
   getConversationList: () => ConversationMeta[];
   /** Updates a conversation's persisted metadata. */
@@ -67,6 +69,7 @@ export class ThreadsView extends ItemView {
         adapter: this.deps.adapter,
         organizer: this.deps.organizer,
         searchIndex: this.deps.searchIndex,
+        sortService: this.deps.sortService,
         getConversationList: this.deps.getConversationList,
         updateConversation: this.deps.updateConversation,
       },

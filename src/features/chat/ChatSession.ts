@@ -12,7 +12,7 @@ import type { AgentConfig, AgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
-import type { CassandraSettings, ConversationMeta, PermissionMode, ThinkingBudget, UsageInfo } from '../../core/types';
+import type { CassandraSettings, ChatMessage, ConversationMeta, ThinkingBudget, UsageInfo } from '../../core/types';
 import { ApprovalModal } from '../../shared/ApprovalModal';
 import { SlashCommandDropdown } from '../../shared/slash/SlashCommandDropdown';
 import { InputController } from './controllers/InputController';
@@ -342,6 +342,25 @@ export class ChatSession {
 
   getConversationId(): string { return this.conversationId; }
 
+  /** Attach to an existing runner session (e.g. from fork). Loads transcript after connecting. */
+  async attachToRunnerSession(runnerSessionId: string): Promise<void> {
+    this.service?.suppressTitleGeneration();
+    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
+    this.statusEl.textContent = 'Connecting to forked session...';
+
+    this.service?.setSessionId(runnerSessionId);
+
+    const cleanup = this.service?.onReadyStateChange(async (ready) => {
+      if (ready) {
+        cleanup?.();
+        this.toolbar.update({ isReady: true });
+        this.statusEl.textContent = this.formatStatusText();
+        await this.loadTranscript();
+        await this.saveSessionMetadata();
+      }
+    });
+  }
+
   async restoreFromId(id: string): Promise<void> {
     const storage = this.deps.sessionStorage;
     if (!storage) return;
@@ -375,6 +394,7 @@ export class ChatSession {
     this.conversationCreatedAt = meta.createdAt;
     this.messageCount = meta.messageCount;
     this.firstUserMessage = meta.preview;
+    this.service?.suppressTitleGeneration();
 
     // Re-attach to the runner session
     this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
@@ -382,15 +402,101 @@ export class ChatSession {
 
     this.service?.setSessionId(sessionMeta.runnerSessionId);
 
-    // Wait for ready
-    this.service?.onReadyStateChange((ready) => {
+    // Wait for ready, then load transcript
+    const cleanup = this.service?.onReadyStateChange(async (ready) => {
       if (ready) {
+        cleanup?.();
         this.toolbar.update({ isReady: true });
         this.statusEl.textContent = this.formatStatusText();
+        await this.loadTranscript();
       }
     });
 
     this.inputEl.focus();
+  }
+
+  /** Fetch transcript from runner and render messages into the DOM. */
+  private async loadTranscript(): Promise<void> {
+    try {
+      const events = await this.service?.getTranscript();
+      if (!events || events.length === 0) return;
+
+      const messages = this.parseTranscriptEvents(events);
+      for (const msg of messages) {
+        this.state.addMessage(msg);
+        const msgEl = this.renderer.addMessage(msg);
+
+        // Render assistant markdown content
+        if (msg.role === 'assistant' && msg.content) {
+          const contentEl = msgEl.querySelector('.cassandra-message-content') as HTMLElement;
+          if (contentEl) {
+            await this.renderer.renderContent(contentEl, msg.content);
+            this.renderer.addTextCopyButton(contentEl, msg.content);
+          }
+        }
+      }
+
+      log.info('transcript_loaded', { messageCount: messages.length });
+    } catch (err) {
+      log.warn('transcript_load_failed', { error: String(err) });
+    }
+  }
+
+  /** Parse JSONL transcript events into ChatMessage[]. */
+  private parseTranscriptEvents(events: any[]): ChatMessage[] {
+    const messages: ChatMessage[] = [];
+
+    for (const event of events) {
+      if (event.type === 'user') {
+        const text = this.extractTextFromMessage(event.message);
+        if (text) {
+          messages.push({
+            id: event.uuid || crypto.randomUUID(),
+            role: 'user',
+            content: text,
+            timestamp: Date.now(),
+            sdkUserUuid: event.uuid,
+          });
+        }
+      } else if (event.type === 'assistant') {
+        const text = this.extractTextFromMessage(event.message);
+        if (text) {
+          messages.push({
+            id: event.uuid || crypto.randomUUID(),
+            role: 'assistant',
+            content: text,
+            timestamp: Date.now(),
+            sdkAssistantUuid: event.uuid,
+          });
+        }
+      }
+    }
+
+    return messages;
+  }
+
+  /** Extract text content from a transcript message. */
+  private extractTextFromMessage(message: any): string {
+    if (!message) return '';
+
+    // String content
+    if (typeof message.content === 'string') return message.content;
+
+    // Array of content blocks
+    if (Array.isArray(message.content)) {
+      const textParts: string[] = [];
+      for (const block of message.content) {
+        if (block.type === 'text' && block.text) {
+          textParts.push(block.text);
+        }
+      }
+      return textParts.join('\n\n');
+    }
+
+    // Role-level text
+    if (typeof message === 'string') return message;
+
+    return '';
   }
 
   // ── New conversation ─────────────────────────────────────────

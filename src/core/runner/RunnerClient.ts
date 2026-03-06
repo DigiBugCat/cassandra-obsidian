@@ -102,6 +102,35 @@ export class RunnerClient extends EventEmitter {
     return resp.json;
   }
 
+  async getTranscript(id: string): Promise<any[]> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/transcript?format=json`,
+      method: 'GET',
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to get transcript: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json?.events ?? [];
+  }
+
+  async suggestFolder(
+    sessionId: string,
+    title: string,
+    preview: string,
+    folders: string[],
+  ): Promise<{ type: 'existing' | 'new'; folderName: string }> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${sessionId}/suggest-folder`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, preview, folders }),
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to suggest folder: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json;
+  }
+
   async generateTitle(id: string, userMessage: string, assistantMessage?: string): Promise<string> {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/generate-title`,

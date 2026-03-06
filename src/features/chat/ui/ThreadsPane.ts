@@ -7,6 +7,7 @@ import { confirm } from '../../../shared/ConfirmModal';
 import { promptText } from '../../../shared/PromptModal';
 import type { ThreadOrganizerService } from '../services/ThreadOrganizerService';
 import type { ThreadSearchIndex } from '../services/ThreadSearchIndex';
+import type { ThreadSortService } from '../services/ThreadSortService';
 
 export interface ThreadRuntimeState {
   isActive: boolean;
@@ -19,6 +20,7 @@ export interface ThreadsPaneDeps {
   adapter: VaultFileAdapter;
   organizer: ThreadOrganizerService;
   searchIndex: ThreadSearchIndex;
+  sortService: ThreadSortService;
   getConversationList: () => ConversationMeta[];
   updateConversation: (id: string, partial: Partial<ConversationMeta>) => Promise<void>;
 }
@@ -100,6 +102,22 @@ export class ThreadsPane {
     newThreadBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       await this.callbacks.onCreateThreadUnsorted();
+      await this.refresh();
+    });
+
+    const autosortBtn = actionsEl.createEl('button', {
+      cls: 'clickable-icon cassandra-threads-pane-btn',
+      attr: { 'aria-label': 'Autosort unsorted threads', title: 'Autosort unsorted' },
+    });
+    setIcon(autosortBtn, 'wand-sparkles');
+    autosortBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      autosortBtn.addClass('is-loading');
+      try {
+        await this.deps.sortService.sortUnsorted();
+      } finally {
+        autosortBtn.removeClass('is-loading');
+      }
       await this.refresh();
     });
 
@@ -753,6 +771,18 @@ export class ThreadsPane {
         await this.refresh();
       });
     });
+
+    // Autosort
+    if (conversation.messageCount > 0) {
+      menu.addItem(item => {
+        item.setTitle('Autosort');
+        item.setIcon('wand-sparkles');
+        item.onClick(async () => {
+          await this.deps.sortService.sortThread(conversation.id);
+          await this.refresh();
+        });
+      });
+    }
 
     menu.addSeparator();
 

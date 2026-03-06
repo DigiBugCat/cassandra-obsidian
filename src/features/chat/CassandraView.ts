@@ -1,10 +1,15 @@
 import type { WorkspaceLeaf } from 'obsidian';
 import { ItemView } from 'obsidian';
+import { Notice } from 'obsidian';
 
 import type { AgentConfig } from '../../core/agent';
+import { createLogger } from '../../core/logging';
+import { RunnerClient } from '../../core/runner';
 import type { SessionStorage } from '../../core/storage';
 import type { CassandraSettings } from '../../core/types';
 import { TabBar, TabManager } from './tabs';
+
+const log = createLogger('CassandraView');
 
 export const VIEW_TYPE_CASSANDRA = 'cassandra-view';
 
@@ -104,6 +109,39 @@ export class CassandraView extends ItemView {
     const tab = this.tabManager?.createTab();
     if (tab) {
       tab.session.restoreFromId(conversationId);
+    }
+  }
+
+  /** Fork a conversation by its metadata id — creates a new tab with the forked runner session. */
+  async forkConversation(conversationId: string): Promise<void> {
+    if (!this.sessionStorage) return;
+
+    // Load session metadata to get the runner session id
+    const sessionMeta = await this.sessionStorage.load(conversationId);
+    if (!sessionMeta?.runnerSessionId) {
+      new Notice('Cannot fork: no runner session found');
+      return;
+    }
+
+    try {
+      // Fork the runner session via the orchestrator
+      const client = new RunnerClient(this.config.settings.runnerUrl || 'http://localhost:9080');
+      const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
+
+      // Create a new tab
+      const tab = this.tabManager?.createTab();
+      if (!tab) return;
+
+      // Attach the forked session to the new tab's ChatSession
+      // The ChatSession's service will connect to this runner session
+      tab.session.attachToRunnerSession(forkResult.session_id);
+      tab.title = `Fork of ${sessionMeta.title}`;
+      this.updateTabBar();
+
+      log.info('fork_conversation', { source: conversationId, forked: forkResult.session_id });
+    } catch (err) {
+      log.warn('fork_failed', { conversationId, error: String(err) });
+      new Notice(`Fork failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   }
 

@@ -2,13 +2,15 @@ import type { WorkspaceLeaf } from 'obsidian';
 import { Plugin } from 'obsidian';
 
 import type { AgentConfig } from './core/agent';
+import { RunnerClient } from './core/runner';
 import { SessionStorage, VaultFileAdapter } from './core/storage';
 import type { CassandraSettings, ConversationMeta } from './core/types';
 import { DEFAULT_SETTINGS } from './core/types';
 import { CassandraView, VIEW_TYPE_CASSANDRA } from './features/chat/CassandraView';
-import { ThreadsView, VIEW_TYPE_THREADS } from './features/chat/ThreadsView';
 import { ThreadOrganizerService } from './features/chat/services/ThreadOrganizerService';
 import { ThreadSearchIndex } from './features/chat/services/ThreadSearchIndex';
+import { ThreadSortService } from './features/chat/services/ThreadSortService';
+import { ThreadsView, VIEW_TYPE_THREADS } from './features/chat/ThreadsView';
 import { CassandraSettingsTab } from './features/settings/CassandraSettingsTab';
 
 export default class CassandraPlugin extends Plugin {
@@ -18,6 +20,7 @@ export default class CassandraPlugin extends Plugin {
   private sessionStorage: SessionStorage | null = null;
   private organizer: ThreadOrganizerService | null = null;
   private searchIndex: ThreadSearchIndex | null = null;
+  private sortService: ThreadSortService | null = null;
   private conversationCache: ConversationMeta[] = [];
 
   async onload() {
@@ -48,6 +51,12 @@ export default class CassandraPlugin extends Plugin {
       this.adapter,
       () => this.sessionStorage!.list(),
     );
+    this.sortService = new ThreadSortService({
+      getRunnerClient: () => new RunnerClient(this.settings.runnerUrl || 'http://localhost:9080'),
+      storage: this.sessionStorage,
+      organizer: this.organizer,
+      getConversationList: () => this.conversationCache,
+    });
 
     // Load initial conversation cache
     this.refreshConversationCache();
@@ -62,6 +71,7 @@ export default class CassandraPlugin extends Plugin {
         storage: this.sessionStorage!,
         organizer: this.organizer!,
         searchIndex: this.searchIndex!,
+        sortService: this.sortService!,
         getConversationList: () => this.conversationCache,
         updateConversation: async (id, partial) => {
           await this.sessionStorage!.updateMeta(id, partial as any);
@@ -76,11 +86,13 @@ export default class CassandraPlugin extends Plugin {
           const view = this.getCassandraView();
           return view?.getActiveSessionId() ?? null;
         },
-        forkConversation: async (_id) => {
-          // TODO: Wire fork through CassandraView
+        forkConversation: async (id) => {
+          await this.activateView();
+          const view = this.getCassandraView();
+          if (view) await view.forkConversation(id);
         },
         compactAndForkConversation: async (_id) => {
-          // TODO: Wire compact+fork through CassandraView
+          // Compact-and-fork needs runner protocol changes — deferred
         },
         createConversationUnsorted: async () => {
           await this.activateView();

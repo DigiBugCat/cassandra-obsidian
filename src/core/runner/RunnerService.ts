@@ -372,7 +372,18 @@ export class RunnerService implements AgentService {
     return this.client.getCommands(this.runnerSessionId);
   }
 
+  // ── Transcript ─────────────────────────────────────────────────────
+
+  async getTranscript(): Promise<any[]> {
+    if (!this.runnerSessionId) return [];
+    return this.client.getTranscript(this.runnerSessionId);
+  }
+
   // ── Fork / Resume ──────────────────────────────────────────────────
+
+  getClient(): RunnerClient { return this.client; }
+
+  suppressTitleGeneration(): void { this.titleGenerated = true; }
 
   setPendingResumeAt(uuid: string | undefined): void { this.pendingResumeAt = uuid; }
 
