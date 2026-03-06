@@ -49,13 +49,14 @@ export class ImageContextManager {
     contextRowEl: HTMLElement,
     inputEl: HTMLTextAreaElement,
     callbacks: ImageContextCallbacks,
+    dropTargetEl?: HTMLElement,
   ) {
     this.contextRowEl = contextRowEl;
     this.callbacks = callbacks;
     this.previewEl = contextRowEl.createEl('div', { cls: 'cassandra-image-preview' });
 
     this.setupPasteHandler(inputEl);
-    this.setupDragAndDrop(composerEl);
+    this.setupDragAndDrop(dropTargetEl ?? composerEl, composerEl);
   }
 
   getImages(): ImageAttachment[] {
@@ -93,25 +94,24 @@ export class ImageContextManager {
 
   // ── Drag and drop ──────────────────────────────────────────────
 
-  private setupDragAndDrop(composerEl: HTMLElement): void {
-    this.dropOverlay = composerEl.createEl('div', { cls: 'cassandra-drop-overlay' });
+  private setupDragAndDrop(dropZoneEl: HTMLElement, overlayParentEl: HTMLElement): void {
+    this.dropOverlay = overlayParentEl.createEl('div', { cls: 'cassandra-drop-overlay' });
     this.dropOverlayLabel = this.dropOverlay.createEl('span', { text: 'Drop file here' });
     this.dropOverlay.style.display = 'none';
 
     let dragCounter = 0;
 
-    composerEl.addEventListener('dragenter', (e) => {
+    dropZoneEl.addEventListener('dragenter', (e) => {
       e.preventDefault();
       dragCounter++;
       if (this.hasDraggableContent(e)) {
         this.dropOverlay!.style.display = '';
-        // Update label based on drag content
         const hasImage = this.hasImageInDragEvent(e);
         this.dropOverlayLabel!.textContent = hasImage ? 'Drop image here' : 'Drop file here';
       }
     });
 
-    composerEl.addEventListener('dragleave', () => {
+    dropZoneEl.addEventListener('dragleave', () => {
       dragCounter--;
       if (dragCounter <= 0) {
         dragCounter = 0;
@@ -119,11 +119,11 @@ export class ImageContextManager {
       }
     });
 
-    composerEl.addEventListener('dragover', (e) => {
+    dropZoneEl.addEventListener('dragover', (e) => {
       e.preventDefault();
     });
 
-    composerEl.addEventListener('drop', async (e) => {
+    dropZoneEl.addEventListener('drop', async (e) => {
       e.preventDefault();
       dragCounter = 0;
       this.dropOverlay!.style.display = 'none';
