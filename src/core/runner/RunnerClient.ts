@@ -130,23 +130,6 @@ export class RunnerClient extends EventEmitter {
     return (resp.json?.events ?? []) as RunnerTranscriptEvent[];
   }
 
-  async query(
-    sessionId: string,
-    prompt: string,
-    opts?: { systemPrompt?: string; model?: string; maxTokens?: number },
-  ): Promise<string> {
-    const resp = await requestUrl({
-      url: `${this.baseUrl}/sessions/${sessionId}/query`,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, ...opts }),
-    });
-    if (resp.status >= 400) {
-      throw new Error(`Utility query failed: ${resp.json?.message || `HTTP ${resp.status}`}`);
-    }
-    return resp.json.text;
-  }
-
   async compactSession(id: string, customInstructions?: string): Promise<void> {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/context/compact`,
@@ -160,21 +143,41 @@ export class RunnerClient extends EventEmitter {
   }
 
   async generateTitle(id: string, userMessage: string, assistantMessage?: string): Promise<string> {
-    const truncatedUser = userMessage.slice(0, 500);
-    const parts = [`User: ${truncatedUser}`];
-    if (assistantMessage) {
-      parts.push(`Assistant: ${assistantMessage.slice(0, 500)}`);
-    }
-    const prompt = parts.join('\n\n') + '\n\nGenerate a short title for this conversation:';
-
-    const text = await this.query(id, prompt, {
-      systemPrompt: 'You are a specialist in summarizing conversations into short titles.\nGiven the first user message and optionally the first assistant response, generate a concise title (3-7 words) that captures the main topic.\nRules:\n- Be specific, not generic ("Fix React useEffect bug" not "Code help")\n- No punctuation at the end\n- No quotes around the title\n- Output ONLY the title, nothing else',
-      model: 'haiku',
-      maxTokens: 60,
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/generate-title`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userMessage,
+        assistantMessage,
+      }),
     });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to generate title: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json?.title ?? '';
+  }
 
-    const cleaned = text.trim().replace(/^["']|["']$/g, '').replace(/[.!?]$/, '').trim();
-    return (cleaned && cleaned.length >= 3) ? cleaned.slice(0, 50) : '';
+  async suggestFolder(
+    id: string,
+    title: string,
+    preview: string,
+    folders: string[],
+  ): Promise<{ type: 'existing' | 'new'; folderName: string }> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/suggest-folder`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        preview,
+        folders,
+      }),
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to suggest folder: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+    return resp.json;
   }
 
   // --- WebSocket ---

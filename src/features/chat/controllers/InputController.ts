@@ -35,7 +35,11 @@ export class InputController {
   // Send
   // ============================================
 
-  async handleSend(): Promise<void> {
+  /**
+   * @param retryPrompt  When provided, re-sends this prompt without creating
+   *                     a duplicate user message bubble (used by stale-session recovery).
+   */
+  async handleSend(retryPrompt?: string): Promise<void> {
     const { state, streamController, renderer } = this.deps;
 
     // Guard: already streaming, no service, or no input
@@ -50,33 +54,43 @@ export class InputController {
       return;
     }
 
-    const inputEl = this.deps.getInputEl();
-    const prompt = inputEl?.value.trim() ?? '';
-    const images = this.deps.getImages?.() ?? [];
-    if (!prompt && images.length === 0) return;
+    const isRetry = !!retryPrompt;
+    let prompt: string;
+    let images: ImageAttachment[] = [];
+    let contextXml = '';
 
-    // Prepend file context XML if present
-    const contextXml = this.deps.getContextXml?.() ?? '';
+    if (isRetry) {
+      prompt = retryPrompt;
+    } else {
+      const inputEl = this.deps.getInputEl();
+      prompt = inputEl?.value.trim() ?? '';
+      images = this.deps.getImages?.() ?? [];
+      if (!prompt && images.length === 0) return;
 
-    // Clear input, images, and file context immediately
-    if (inputEl) inputEl.value = '';
-    this.deps.clearImages?.();
-    this.deps.clearFileContext?.();
+      contextXml = this.deps.getContextXml?.() ?? '';
+
+      // Clear input, images, and file context immediately
+      if (inputEl) inputEl.value = '';
+      this.deps.clearImages?.();
+      this.deps.clearFileContext?.();
+    }
 
     // Transition to streaming state
     state.isStreaming = true;
     state.cancelRequested = false;
 
-    // Build user message
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: prompt,
-      timestamp: Date.now(),
-      images: images.length > 0 ? images : undefined,
-    };
-    state.addMessage(userMsg);
-    renderer.addMessage(userMsg);
+    // Render user message only on first send (not on retry — it's already visible)
+    if (!isRetry) {
+      const userMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: prompt,
+        timestamp: Date.now(),
+        images: images.length > 0 ? images : undefined,
+      };
+      state.addMessage(userMsg);
+      renderer.addMessage(userMsg);
+    }
 
     // Build assistant placeholder
     const assistantMsg: ChatMessage = {

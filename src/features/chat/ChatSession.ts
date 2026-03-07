@@ -805,11 +805,10 @@ export class ChatSession {
     this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
     await this.saveSessionMetadata();
 
-    // Auto-retry the message that failed
+    // Auto-retry the message that failed (skip user bubble — it's already rendered)
     if (ready && retryPrompt) {
       log.info('stale_session_retry', { prompt: retryPrompt.slice(0, 60) });
-      this.inputEl.value = retryPrompt;
-      setTimeout(() => this.handleSendOrCancel(), 200);
+      setTimeout(() => this.inputController.handleSend(retryPrompt), 200);
     }
 
     return !!ready;

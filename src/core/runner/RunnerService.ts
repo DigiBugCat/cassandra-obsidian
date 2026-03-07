@@ -506,8 +506,10 @@ export class RunnerService implements ChatAgentService {
         for (const resolver of this.queryResolvers) resolver.push(streamEvent);
       }
 
-      if (event.type === 'result') {
+      if (event.type === 'result' || event.type === 'error') {
         sawStreamText = false;
+      }
+      if (event.type === 'result') {
         for (const resolver of this.queryResolvers) resolver.done();
       }
     };
@@ -556,6 +558,7 @@ export class RunnerService implements ChatAgentService {
 
     const onError = (err: any) => {
       log.warn('session_error', { session_id: sessionId, error: err.message });
+      sawStreamText = false;
       for (const resolver of this.queryResolvers) {
         resolver.error(new Error(err.message || 'Session error'));
       }
