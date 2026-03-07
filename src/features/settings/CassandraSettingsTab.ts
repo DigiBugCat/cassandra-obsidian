@@ -163,7 +163,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
 
         new Setting(serverEl)
           .setName(name)
-          .setDesc(`${config.command}${config.args?.length ? ' ' + config.args.join(' ') : ''}`)
+          .setDesc(`${config.type.toUpperCase()} — ${config.url}`)
           .addExtraButton((btn) =>
             btn.setIcon('pencil').setTooltip('Edit').onClick(() => {
               this.editMcpServer(name, config, renderMcpServers);
@@ -267,7 +267,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
       );
   }
 
-  private parseMcpServers(): Record<string, { command: string; args?: string[]; env?: Record<string, string> }> {
+  private parseMcpServers(): Record<string, { type: 'http' | 'sse'; url: string; headers?: Record<string, string> }> {
     const json = this.plugin.settings.mcpServersJson;
     if (!json?.trim()) return {};
     try {
@@ -279,7 +279,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
 
   private editMcpServer(
     existingName: string | null,
-    existingConfig: { command: string; args?: string[]; env?: Record<string, string> } | null,
+    existingConfig: { type: 'http' | 'sse'; url: string; headers?: Record<string, string> } | null,
     onSave: () => void,
   ): void {
     const modal = new McpServerModal(this.app, existingName, existingConfig, async (name, config) => {
@@ -301,22 +301,22 @@ export class CassandraSettingsTab extends PluginSettingTab {
 
 class McpServerModal extends Modal {
   private name: string;
-  private command: string;
-  private args: string;
-  private envVars: string;
-  private onSubmit: (name: string, config: { command: string; args?: string[]; env?: Record<string, string> }) => void;
+  private serverType: 'http' | 'sse';
+  private url: string;
+  private headers: string;
+  private onSubmit: (name: string, config: { type: 'http' | 'sse'; url: string; headers?: Record<string, string> }) => void;
 
   constructor(
     app: App,
     name: string | null,
-    config: { command: string; args?: string[]; env?: Record<string, string> } | null,
-    onSubmit: (name: string, config: { command: string; args?: string[]; env?: Record<string, string> }) => void,
+    config: { type: 'http' | 'sse'; url: string; headers?: Record<string, string> } | null,
+    onSubmit: (name: string, config: { type: 'http' | 'sse'; url: string; headers?: Record<string, string> }) => void,
   ) {
     super(app);
     this.name = name ?? '';
-    this.command = config?.command ?? '';
-    this.args = config?.args?.join(' ') ?? '';
-    this.envVars = config?.env ? Object.entries(config.env).map(([k, v]) => `${k}=${v}`).join('\n') : '';
+    this.serverType = config?.type ?? 'http';
+    this.url = config?.url ?? '';
+    this.headers = config?.headers ? Object.entries(config.headers).map(([k, v]) => `${k}: ${v}`).join('\n') : '';
     this.onSubmit = onSubmit;
   }
 
@@ -335,33 +335,34 @@ class McpServerModal extends Modal {
       );
 
     new Setting(contentEl)
-      .setName('Command')
-      .setDesc('Executable to run (e.g. "npx", "node", "python")')
-      .addText((text) =>
-        text
-          .setPlaceholder('npx')
-          .setValue(this.command)
-          .onChange((v) => { this.command = v; }),
+      .setName('Transport')
+      .setDesc('HTTP (streamable) or SSE (legacy)')
+      .addDropdown((dd) =>
+        dd
+          .addOption('http', 'HTTP')
+          .addOption('sse', 'SSE')
+          .setValue(this.serverType)
+          .onChange((v) => { this.serverType = v as 'http' | 'sse'; }),
       );
 
     new Setting(contentEl)
-      .setName('Arguments')
-      .setDesc('Space-separated arguments (e.g. "-y @modelcontextprotocol/server-filesystem")')
+      .setName('URL')
+      .setDesc('Server endpoint (e.g. "https://mcp.example.com/sse")')
       .addText((text) =>
         text
-          .setPlaceholder('-y @my/mcp-server')
-          .setValue(this.args)
-          .onChange((v) => { this.args = v; }),
+          .setPlaceholder('https://mcp.example.com/sse')
+          .setValue(this.url)
+          .onChange((v) => { this.url = v; }),
       );
 
     new Setting(contentEl)
-      .setName('Environment variables')
-      .setDesc('One per line: KEY=value')
+      .setName('Headers')
+      .setDesc('One per line: Header-Name: value')
       .addTextArea((text) => {
         text
-          .setPlaceholder('API_KEY=xxx\nDEBUG=true')
-          .setValue(this.envVars)
-          .onChange((v) => { this.envVars = v; });
+          .setPlaceholder('Authorization: Bearer xxx\nX-Custom: value')
+          .setValue(this.headers)
+          .onChange((v) => { this.headers = v; });
         text.inputEl.rows = 3;
         text.inputEl.style.width = '100%';
         text.inputEl.style.fontFamily = 'var(--font-monospace)';
@@ -371,22 +372,20 @@ class McpServerModal extends Modal {
     new Setting(contentEl)
       .addButton((btn) =>
         btn.setButtonText('Save').setCta().onClick(() => {
-          if (!this.name.trim() || !this.command.trim()) return;
+          if (!this.name.trim() || !this.url.trim()) return;
 
-          const config: { command: string; args?: string[]; env?: Record<string, string> } = {
-            command: this.command.trim(),
+          const config: { type: 'http' | 'sse'; url: string; headers?: Record<string, string> } = {
+            type: this.serverType,
+            url: this.url.trim(),
           };
 
-          const args = this.args.trim();
-          if (args) config.args = args.split(/\s+/);
-
-          const envLines = this.envVars.trim();
-          if (envLines) {
-            config.env = {};
-            for (const line of envLines.split('\n')) {
-              const eq = line.indexOf('=');
-              if (eq > 0) {
-                config.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+          const headerLines = this.headers.trim();
+          if (headerLines) {
+            config.headers = {};
+            for (const line of headerLines.split('\n')) {
+              const colon = line.indexOf(':');
+              if (colon > 0) {
+                config.headers[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
               }
             }
           }
