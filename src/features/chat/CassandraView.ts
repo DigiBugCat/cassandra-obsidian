@@ -129,7 +129,7 @@ export class CassandraView extends ItemView {
 
     try {
       // Fork the runner session via the orchestrator
-      const client = new RunnerClient(this.config.settings.runnerUrl || 'http://localhost:9080');
+      const client = new RunnerClient(this.config.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.config.settings.cfAccessClientId ? { clientId: this.config.settings.cfAccessClientId, clientSecret: this.config.settings.cfAccessClientSecret } : undefined);
       const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
 
       // Create a new tab
@@ -160,7 +160,7 @@ export class CassandraView extends ItemView {
     }
 
     try {
-      const client = new RunnerClient(this.config.settings.runnerUrl || 'http://localhost:9080');
+      const client = new RunnerClient(this.config.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.config.settings.cfAccessClientId ? { clientId: this.config.settings.cfAccessClientId, clientSecret: this.config.settings.cfAccessClientSecret } : undefined);
       const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
 
       // Schedule compaction on the forked session (runs on next query)

@@ -77,6 +77,32 @@ export class CassandraSettingsTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl)
+      .setName('CF Access Client ID')
+      .setDesc('Cloudflare Access service token ID (for remote runner behind CF tunnel)')
+      .addText((text) =>
+        text
+          .setPlaceholder('abc123.access')
+          .setValue(this.plugin.settings.cfAccessClientId)
+          .onChange(async (value) => {
+            this.plugin.settings.cfAccessClientId = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName('CF Access Client Secret')
+      .setDesc('Cloudflare Access service token secret')
+      .addText((text) =>
+        text
+          .setPlaceholder('')
+          .setValue(this.plugin.settings.cfAccessClientSecret)
+          .onChange(async (value) => {
+            this.plugin.settings.cfAccessClientSecret = value.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+
     // ── Model Defaults ──
     containerEl.createEl('h2', { text: 'Model Defaults' });
 

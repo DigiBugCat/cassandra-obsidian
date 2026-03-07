@@ -37,9 +37,15 @@ export interface SteerOpts extends SendOpts {
   compactInstructions?: string;
 }
 
+export interface CfAccessCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
 export class RunnerClient extends EventEmitter {
   private baseUrl: string;
   private wsUrl: string;
+  private cfAccess: CfAccessCredentials | null;
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -47,10 +53,21 @@ export class RunnerClient extends EventEmitter {
   private activeSubscriptions = new Set<string>();
   private intentionalDisconnect = false;
 
-  constructor(baseUrl: string = 'http://localhost:9080') {
+  constructor(baseUrl: string = 'http://localhost:9080', cfAccess?: CfAccessCredentials) {
     super();
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.wsUrl = this.baseUrl.replace(/^http/, 'ws') + '/ws';
+    this.cfAccess = cfAccess?.clientId && cfAccess?.clientSecret ? cfAccess : null;
+  }
+
+  /** Build headers with CF Access credentials if configured. */
+  private headers(extra?: Record<string, string>): Record<string, string> {
+    const h: Record<string, string> = { ...extra };
+    if (this.cfAccess) {
+      h['CF-Access-Client-Id'] = this.cfAccess.clientId;
+      h['CF-Access-Client-Secret'] = this.cfAccess.clientSecret;
+    }
+    return h;
   }
 
   // --- HTTP ---
@@ -59,7 +76,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
     });
     if (resp.status >= 400) {
@@ -69,7 +86,7 @@ export class RunnerClient extends EventEmitter {
   }
 
   async deleteSession(id: string): Promise<void> {
-    const resp = await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'DELETE' });
+    const resp = await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'DELETE', headers: this.headers() });
     if (resp.status >= 400) {
       throw new Error(`Failed to delete session: ${resp.json?.message || `HTTP ${resp.status}`}`);
     }
@@ -79,7 +96,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/stop`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: '{}',
     });
     if (resp.status >= 400) {
@@ -88,7 +105,7 @@ export class RunnerClient extends EventEmitter {
   }
 
   async getSession(id: string): Promise<RunnerSessionDetail> {
-    const resp = await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'GET' });
+    const resp = await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'GET', headers: this.headers() });
     if (resp.status >= 400) throw new Error(`Session not found: ${id}`);
     return resp.json;
   }
@@ -97,7 +114,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/resume`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: '{}',
     });
     if (resp.status >= 400) {
@@ -110,7 +127,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/fork`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
     });
     if (resp.status >= 400) {
@@ -123,6 +140,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/transcript?format=json`,
       method: 'GET',
+      headers: this.headers(),
     });
     if (resp.status >= 400) {
       throw new Error(`Failed to get transcript: ${resp.json?.message || `HTTP ${resp.status}`}`);
@@ -134,7 +152,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/context/compact`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(customInstructions ? { custom_instructions: customInstructions } : {}),
     });
     if (resp.status >= 400) {
@@ -146,7 +164,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/generate-title`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         userMessage,
         assistantMessage,
@@ -167,7 +185,7 @@ export class RunnerClient extends EventEmitter {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/suggest-folder`,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         title,
         preview,
@@ -189,7 +207,13 @@ export class RunnerClient extends EventEmitter {
       this.intentionalDisconnect = false;
 
       try {
-        this.ws = new WebSocket(this.wsUrl);
+        // Browser WebSocket doesn't support custom headers — pass CF Access as query params
+        let wsUrl = this.wsUrl;
+        if (this.cfAccess) {
+          const sep = wsUrl.includes('?') ? '&' : '?';
+          wsUrl += `${sep}CF-Access-Client-Id=${encodeURIComponent(this.cfAccess.clientId)}&CF-Access-Client-Secret=${encodeURIComponent(this.cfAccess.clientSecret)}`;
+        }
+        this.ws = new WebSocket(wsUrl);
       } catch (err) {
         reject(new Error(`Failed to connect to runner: ${err}`));
         return;

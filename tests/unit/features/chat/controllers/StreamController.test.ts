@@ -23,6 +23,8 @@ function makeSettings(overrides: Partial<CassandraSettings> = {}): CassandraSett
     runnerProjectPath: '',
     runnerVaultName: '',
     agentName: '',
+    cfAccessClientId: '',
+    cfAccessClientSecret: '',
     model: 'sonnet',
     thinkingBudget: 'medium',
     permissionMode: 'default',

@@ -18,6 +18,10 @@ export interface CassandraSettings {
   runnerVaultName: string;
   agentName: string;
 
+  // CF Access (for remote runner behind Cloudflare tunnel)
+  cfAccessClientId: string;
+  cfAccessClientSecret: string;
+
   // Model
   model: ClaudeModel;
   thinkingBudget: ThinkingBudget;
@@ -42,10 +46,12 @@ export interface CassandraSettings {
 }
 
 export const DEFAULT_SETTINGS: CassandraSettings = {
-  runnerUrl: 'http://localhost:9080',
+  runnerUrl: 'https://claude-runner.cassandrasedge.com',
   runnerProjectPath: '',
   runnerVaultName: '',
   agentName: 'cassandra',
+  cfAccessClientId: '',
+  cfAccessClientSecret: '',
 
   mcpServersJson: '',
 
