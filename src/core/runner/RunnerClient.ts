@@ -47,6 +47,10 @@ export class RunnerClient extends EventEmitter {
   private requestCounter = 0;
   private activeSubscriptions = new Set<string>();
   private intentionalDisconnect = false;
+  private pendingConnect: Promise<void> | null = null;
+  private reconnectAttempts = 0;
+  private static readonly MAX_RECONNECT_DELAY = 30000;
+  private static readonly BASE_RECONNECT_DELAY = 3000;
 
   constructor(baseUrl: string = 'http://localhost:9080', apiKey?: string) {
     super();
@@ -197,7 +201,18 @@ export class RunnerClient extends EventEmitter {
   connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
 
-    return new Promise((resolve, reject) => {
+    // If already connecting, wait for that attempt instead of creating a new socket
+    if (this.ws?.readyState === WebSocket.CONNECTING && this.pendingConnect) {
+      return this.pendingConnect;
+    }
+
+    // Close any lingering socket (e.g. stuck in CLOSING state)
+    if (this.ws) {
+      try { this.ws.close(); } catch { /* ignore */ }
+      this.ws = null;
+    }
+
+    this.pendingConnect = new Promise<void>((resolve, reject) => {
       this.intentionalDisconnect = false;
 
       try {
@@ -209,6 +224,7 @@ export class RunnerClient extends EventEmitter {
         }
         this.ws = new WebSocket(wsUrl);
       } catch (err) {
+        this.pendingConnect = null;
         reject(new Error(`Failed to connect to runner: ${err}`));
         return;
       }
@@ -217,6 +233,8 @@ export class RunnerClient extends EventEmitter {
       const onOpen = () => {
         log.info('connected', { url: this.wsUrl });
         socket.removeEventListener('error', onError);
+        this.reconnectAttempts = 0;
+        this.pendingConnect = null;
         this.pingInterval = setInterval(() => {
           if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'ping' }));
@@ -228,6 +246,7 @@ export class RunnerClient extends EventEmitter {
 
       const onError = () => {
         socket.removeEventListener('open', onOpen);
+        this.pendingConnect = null;
         reject(new Error('WebSocket connection failed'));
       };
 
@@ -252,10 +271,13 @@ export class RunnerClient extends EventEmitter {
         }
       });
     });
+
+    return this.pendingConnect;
   }
 
   disconnect(): void {
     this.intentionalDisconnect = true;
+    this.pendingConnect = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -269,6 +291,10 @@ export class RunnerClient extends EventEmitter {
 
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  isReconnecting(): boolean {
+    return this.reconnectAttempts > 0;
   }
 
   // --- WS Commands ---
@@ -436,13 +462,19 @@ export class RunnerClient extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
+    this.reconnectAttempts++;
+    const delay = Math.min(
+      RunnerClient.BASE_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1),
+      RunnerClient.MAX_RECONNECT_DELAY,
+    );
+    log.info('scheduling_reconnect', { attempt: this.reconnectAttempts, delay_ms: delay });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect().then(() => {
         for (const sessionId of this.activeSubscriptions) {
           this.sendFrame({ type: 'subscribe', session_id: sessionId, request_id: this.nextRequestId() });
         }
-      }).catch((err) => log.warn('reconnect_failed', { error: String(err) }));
-    }, 3000);
+      }).catch((err) => log.warn('reconnect_failed', { attempt: this.reconnectAttempts, error: String(err) }));
+    }, delay);
   }
 }

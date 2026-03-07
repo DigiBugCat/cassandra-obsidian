@@ -63,8 +63,12 @@ export class RunnerService implements ChatAgentService {
   private pendingReady: Promise<boolean> | null = null;
   private readonly onClientConnected = (): void => {
     if (!this.runnerSessionId) return;
+    const wasDisconnected = !this.active;
     this.active = true;
     this.setReady(true);
+    if (wasDisconnected) {
+      new Notice('Runner reconnected');
+    }
   };
   private readonly onClientDisconnected = (): void => {
     if (!this.active) return;
