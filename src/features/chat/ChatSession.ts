@@ -68,7 +68,7 @@ export class ChatSession {
   private messageCount = 0;
   private firstUserMessage = '';
   private conversationModel: string | undefined;
-  private readonly globalDefaultModel: string;
+  private globalDefaultModel: string;
 
   // DOM refs
   private messagesEl: HTMLElement;
@@ -930,6 +930,11 @@ export class ChatSession {
   }
 
   updateConfig(config: AgentConfig): void {
+    this.globalDefaultModel = config.settings.model;
+    // If this thread has a per-thread model, keep using it instead of the new global default
+    if (this.conversationModel) {
+      config.settings.model = this.conversationModel;
+    }
     this.config = config;
     this.service?.updateConfig(config);
   }
