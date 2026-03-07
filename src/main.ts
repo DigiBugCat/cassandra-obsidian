@@ -187,7 +187,10 @@ export default class CassandraPlugin extends Plugin {
   private refreshThreadsView(): void {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_THREADS);
     if (leaves.length > 0) {
-      (leaves[0].view as ThreadsView).refresh().catch(() => {});
+      const view = leaves[0].view;
+      if (view && typeof (view as any).refresh === 'function') {
+        (view as ThreadsView).refresh().catch(() => {});
+      }
     }
   }
 
