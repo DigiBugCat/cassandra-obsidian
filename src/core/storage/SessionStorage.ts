@@ -25,6 +25,7 @@ export interface SessionMetadata {
   threadFolderId?: string | null;
   threadPinned?: boolean;
   threadArchived?: boolean;
+  model?: string;
 }
 
 export class SessionStorage {

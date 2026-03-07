@@ -67,6 +67,8 @@ export class ChatSession {
   private conversationCreatedAt: number;
   private messageCount = 0;
   private firstUserMessage = '';
+  private conversationModel: string | undefined;
+  private readonly globalDefaultModel: string;
 
   // DOM refs
   private messagesEl: HTMLElement;
@@ -77,6 +79,7 @@ export class ChatSession {
   private processingIndicatorEl: HTMLElement;
   private processingLabelEl: HTMLElement;
   private statusEl: HTMLElement;
+  private retryBtn: HTMLElement;
   private historyDropdownEl: HTMLElement;
   private processingTimerInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -85,6 +88,7 @@ export class ChatSession {
     this.deps = deps;
     this.conversationId = crypto.randomUUID();
     this.conversationCreatedAt = Date.now();
+    this.globalDefaultModel = deps.config.settings.model;
 
     // Build DOM
     const container = deps.containerEl;
@@ -108,6 +112,15 @@ export class ChatSession {
     // Header actions (right)
     const headerActions = header.createEl('div', { cls: 'cassandra-header-actions' });
     this.statusEl = headerActions.createEl('span', { cls: 'cassandra-status', text: 'Connecting...' });
+
+    // Retry button (hidden by default)
+    this.retryBtn = headerActions.createEl('div', {
+      cls: 'cassandra-header-btn',
+      attr: { 'aria-label': 'Retry connection' },
+    });
+    setIcon(this.retryBtn, 'refresh-cw');
+    this.retryBtn.style.display = 'none';
+    this.retryBtn.addEventListener('click', () => this.connectWithRetry());
 
     // History button + dropdown
     const historyContainer = headerActions.createEl('div', { cls: 'cassandra-history-container' });
@@ -425,6 +438,12 @@ export class ChatSession {
     this.conversationCreatedAt = Date.now();
     this.messageCount = 0;
     this.firstUserMessage = '';
+    this.conversationModel = undefined;
+
+    // Reset model to global default for new conversations
+    this.config.settings.model = this.globalDefaultModel;
+    this.service?.updateConfig(this.config);
+    this.toolbar.update({ model: this.globalDefaultModel });
 
     this.fileManager.reset();
     this.slashDropdown.invalidateCache();
@@ -509,6 +528,14 @@ export class ChatSession {
     this.messageCount = meta.messageCount;
     this.firstUserMessage = meta.preview;
     this.service?.suppressTitleGeneration();
+
+    // Restore per-thread model
+    if (sessionMeta.model) {
+      this.conversationModel = sessionMeta.model;
+      this.config.settings.model = sessionMeta.model;
+      this.service?.updateConfig(this.config);
+      this.toolbar.update({ model: sessionMeta.model });
+    }
 
     this.statusEl.textContent = 'Reconnecting...';
     const attached = await this.service?.attachToSession(sessionMeta.runnerSessionId);
@@ -761,6 +788,7 @@ export class ChatSession {
       threadFolderId: existingMeta?.threadFolderId,
       threadPinned: existingMeta?.threadPinned,
       threadArchived: existingMeta?.threadArchived,
+      model: this.conversationModel ?? existingMeta?.model,
     };
 
     try {
@@ -773,10 +801,11 @@ export class ChatSession {
   // ── Settings handlers ──────────────────────────────────────────
 
   private handleModelChange(model: string): void {
+    this.conversationModel = model;
     this.config.settings.model = model;
     this.service?.updateConfig(this.config);
-    this.persistSettings();
     this.toolbar.update({ model });
+    this.saveSessionMetadata();
   }
 
   private handleThinkingChange(budget: ThinkingBudget): void {
@@ -844,6 +873,7 @@ export class ChatSession {
   }
 
   private async connectWithRetry(maxRetries = 5): Promise<void> {
+    this.retryBtn.style.display = 'none';
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         this.statusEl.textContent = attempt > 1 ? `Connecting (attempt ${attempt})...` : 'Connecting...';
@@ -851,6 +881,7 @@ export class ChatSession {
         if (ready) {
           this.statusEl.textContent = this.formatStatusText();
           this.toolbar.update({ isReady: true });
+          this.retryBtn.style.display = 'none';
           await this.saveSessionMetadata();
           return;
         }
@@ -867,6 +898,7 @@ export class ChatSession {
 
     log.error('connect_failed_all_retries', { maxRetries });
     this.statusEl.textContent = 'Disconnected';
+    this.retryBtn.style.display = '';
     this.toolbar.update({ isReady: false });
   }
 
