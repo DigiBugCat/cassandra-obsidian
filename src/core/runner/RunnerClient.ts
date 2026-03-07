@@ -200,63 +200,94 @@ export class RunnerClient extends EventEmitter {
 
   // --- WebSocket ---
 
+  /**
+   * Pre-authenticate with CF Access via HTTP to obtain a CF_Authorization cookie,
+   * then connect WebSocket with that cookie. Browser WebSocket doesn't support
+   * custom headers, so we can't send service token headers on the WS handshake.
+   */
+  private async obtainCfAccessCookie(): Promise<string | null> {
+    if (!this.cfAccess) return null;
+    try {
+      const resp = await requestUrl({
+        url: `${this.baseUrl}/health`,
+        method: 'GET',
+        headers: this.headers(),
+      });
+      // Obsidian's requestUrl doesn't expose Set-Cookie directly,
+      // but the cookie jar is shared — the WS connection will inherit it.
+      // Return the response to confirm auth succeeded.
+      return resp.status < 400 ? 'ok' : null;
+    } catch {
+      return null;
+    }
+  }
+
   connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
       this.intentionalDisconnect = false;
 
-      try {
-        // Browser WebSocket doesn't support custom headers — pass CF Access as query params
-        let wsUrl = this.wsUrl;
-        if (this.cfAccess) {
-          const sep = wsUrl.includes('?') ? '&' : '?';
-          wsUrl += `${sep}CF-Access-Client-Id=${encodeURIComponent(this.cfAccess.clientId)}&CF-Access-Client-Secret=${encodeURIComponent(this.cfAccess.clientSecret)}`;
-        }
-        this.ws = new WebSocket(wsUrl);
-      } catch (err) {
-        reject(new Error(`Failed to connect to runner: ${err}`));
-        return;
-      }
-      const socket = this.ws;
-
-      const onOpen = () => {
-        log.info('connected', { url: this.wsUrl });
-        socket.removeEventListener('error', onError);
-        this.pingInterval = setInterval(() => {
-          if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, 30000);
-        this.emit('connected');
-        resolve();
-      };
-
-      const onError = () => {
-        socket.removeEventListener('open', onOpen);
-        reject(new Error('WebSocket connection failed'));
-      };
-
-      socket.addEventListener('open', onOpen, { once: true });
-      socket.addEventListener('error', onError, { once: true });
-
-      socket.addEventListener('message', (event: MessageEvent) => {
+      // Pre-auth with CF Access so the cookie jar has CF_Authorization
+      const doConnect = () => {
         try {
-          this.handleFrame(JSON.parse(event.data));
-        } catch {
-          log.warn('invalid_frame', { data: String(event.data).slice(0, 200) });
+          this.ws = new WebSocket(this.wsUrl);
+        } catch (err) {
+          reject(new Error(`Failed to connect to runner: ${err}`));
+          return;
         }
-      });
+        const socket = this.ws;
 
-      socket.addEventListener('close', () => {
-        const shouldReconnect = !this.intentionalDisconnect;
-        log.info('disconnected', { intentional: this.intentionalDisconnect });
-        this.clearSocketState(socket);
-        this.emit('disconnected');
-        if (shouldReconnect) {
-          this.scheduleReconnect();
-        }
-      });
+        const onOpen = () => {
+          log.info('connected', { url: this.wsUrl });
+          socket.removeEventListener('error', onError);
+          this.pingInterval = setInterval(() => {
+            if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 30000);
+          this.emit('connected');
+          resolve();
+        };
+
+        const onError = () => {
+          socket.removeEventListener('open', onOpen);
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        socket.addEventListener('open', onOpen, { once: true });
+        socket.addEventListener('error', onError, { once: true });
+
+        socket.addEventListener('message', (event: MessageEvent) => {
+          try {
+            this.handleFrame(JSON.parse(event.data));
+          } catch {
+            log.warn('invalid_frame', { data: String(event.data).slice(0, 200) });
+          }
+        });
+
+        socket.addEventListener('close', () => {
+          const shouldReconnect = !this.intentionalDisconnect;
+          log.info('disconnected', { intentional: this.intentionalDisconnect });
+          this.clearSocketState(socket);
+          this.emit('disconnected');
+          if (shouldReconnect) {
+            this.scheduleReconnect();
+          }
+        });
+      };
+
+      if (this.cfAccess) {
+        this.obtainCfAccessCookie().then((result) => {
+          if (!result) {
+            reject(new Error('CF Access pre-auth failed'));
+            return;
+          }
+          doConnect();
+        }).catch((err) => reject(err));
+      } else {
+        doConnect();
+      }
     });
   }
 
