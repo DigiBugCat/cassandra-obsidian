@@ -30,7 +30,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
       .setDesc('WebSocket/HTTP URL for the claude-agent-runner')
       .addText((text) =>
         text
-          .setPlaceholder('http://localhost:9080')
+          .setPlaceholder('https://claude-runner.cassandrasedge.com')
           .setValue(this.plugin.settings.runnerUrl)
           .onChange(async (value) => {
             this.plugin.settings.runnerUrl = value;
