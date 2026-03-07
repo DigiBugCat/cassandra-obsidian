@@ -52,7 +52,7 @@ export default class CassandraPlugin extends Plugin {
       () => this.sessionStorage!.list(),
     );
     this.sortService = new ThreadSortService({
-      getRunnerClient: () => new RunnerClient(this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.settings.cfAccessClientId ? { clientId: this.settings.cfAccessClientId, clientSecret: this.settings.cfAccessClientSecret } : undefined),
+      getRunnerClient: () => new RunnerClient(this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.settings.apiKey || undefined),
       storage: this.sessionStorage,
       organizer: this.organizer,
       getConversationList: () => this.conversationCache,
@@ -176,7 +176,7 @@ export default class CassandraPlugin extends Plugin {
   private async deleteConversation(conversationId: string): Promise<void> {
     const sessionMeta = await this.sessionStorage?.load(conversationId);
     if (sessionMeta?.runnerSessionId) {
-      const client = new RunnerClient(this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.settings.cfAccessClientId ? { clientId: this.settings.cfAccessClientId, clientSecret: this.settings.cfAccessClientSecret } : undefined);
+      const client = new RunnerClient(this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.settings.apiKey || undefined);
       await client.deleteSession(sessionMeta.runnerSessionId);
     }
 

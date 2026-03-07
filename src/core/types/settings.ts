@@ -18,9 +18,8 @@ export interface CassandraSettings {
   runnerVaultName: string;
   agentName: string;
 
-  // CF Access (for remote runner behind Cloudflare tunnel)
-  cfAccessClientId: string;
-  cfAccessClientSecret: string;
+  // API key for runner authentication
+  apiKey: string;
 
   // Model
   model: ClaudeModel;
@@ -50,8 +49,7 @@ export const DEFAULT_SETTINGS: CassandraSettings = {
   runnerProjectPath: '',
   runnerVaultName: '',
   agentName: 'cassandra',
-  cfAccessClientId: '',
-  cfAccessClientSecret: '',
+  apiKey: '',
 
   mcpServersJson: '',
 

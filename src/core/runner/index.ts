@@ -1,4 +1,4 @@
-export type { CfAccessCredentials, SendOpts, SteerOpts } from './RunnerClient';
+export type { SendOpts, SteerOpts } from './RunnerClient';
 export { RunnerClient } from './RunnerClient';
 export { RunnerService } from './RunnerService';
 export type { TransformRunnerOptions } from './transformRunnerEvent';
