@@ -75,6 +75,12 @@ export class StreamController {
   /** Debounce before the thinking indicator appears (ms). */
   private static readonly THINKING_INDICATOR_DELAY = 400;
 
+  /** Drip buffer: fixed tick rate, adaptive chunk size. */
+  private static readonly DRIP_INTERVAL_MS = 20;
+  private static readonly DRIP_MIN_CHARS = 1;
+  private static readonly DRIP_MAX_CHARS = 12;
+  private static readonly DRIP_RAMP_THRESHOLD = 120;
+
   constructor(deps: StreamControllerDeps) {
     this.deps = deps;
   }
@@ -106,7 +112,7 @@ export class StreamController {
         this.flushPendingTools();
         if (state.currentThinkingState) this.finalizeCurrentThinkingBlock(msg);
         msg.content += chunk.content;
-        await this.appendText(chunk.content);
+        this.appendText(chunk.content);
         break;
       }
 
@@ -168,19 +174,19 @@ export class StreamController {
         this.flushPendingTools();
         const isStale = /session (has )?stop/i.test(chunk.content) || /session not found/i.test(chunk.content);
         if (isStale && this.deps.onSessionStale) {
-          await this.appendText('\n\nSession expired — reconnecting...');
+          this.appendText('\n\nSession expired — reconnecting...');
           // Grab the user's prompt from the preceding message for retry
           const userMsg = state.messages.filter(m => m.role === 'user').pop();
           this.deps.onSessionStale(userMsg?.content);
         } else {
-          await this.appendText(`\n\n**Error:** ${chunk.content}`);
+          this.appendText(`\n\n**Error:** ${chunk.content}`);
         }
         break;
       }
 
       case 'blocked': {
         this.flushPendingTools();
-        await this.appendText(`\n\n**Blocked:** ${chunk.content}`);
+        this.appendText(`\n\n**Blocked:** ${chunk.content}`);
         break;
       }
 
@@ -351,8 +357,8 @@ export class StreamController {
   // Text Block Management
   // ============================================
 
-  async appendText(text: string): Promise<void> {
-    const { state, renderer } = this.deps;
+  appendText(text: string): void {
+    const { state } = this.deps;
     if (!state.currentContentEl) return;
 
     this.hideThinkingIndicator();
@@ -362,17 +368,92 @@ export class StreamController {
       state.currentTextContent = '';
     }
 
-    state.currentTextContent += text;
-    await renderer.renderContent(state.currentTextEl, state.currentTextContent);
+    state.textDripBuffer += text;
+    this.logger.debug('appendText: buffered', {
+      incomingLen: text.length,
+      incomingPreview: text.slice(0, 40),
+      bufferLen: state.textDripBuffer.length,
+      timerActive: state.textDripTimer !== null,
+    });
+
+    if (state.textDripTimer === null) {
+      this.scheduleDrip();
+    }
+  }
+
+  private getDripChunkSize(): number {
+    const bufLen = this.deps.state.textDripBuffer.length;
+    if (bufLen <= StreamController.DRIP_MIN_CHARS) return bufLen;
+    const t = Math.min(bufLen / StreamController.DRIP_RAMP_THRESHOLD, 1);
+    return Math.ceil(
+      StreamController.DRIP_MIN_CHARS +
+        t * (StreamController.DRIP_MAX_CHARS - StreamController.DRIP_MIN_CHARS),
+    );
+  }
+
+  private scheduleDrip(): void {
+    const { state } = this.deps;
+    if (state.textDripTimer !== null) return;
+    state.textDripTimer = setTimeout(() => {
+      state.textDripTimer = null;
+      this.dripNext();
+    }, StreamController.DRIP_INTERVAL_MS);
+  }
+
+  private dripNext(): void {
+    const { state, renderer } = this.deps;
+
+    if (!state.textDripBuffer || !state.currentTextEl) return;
+
+    const chunkSize = this.getDripChunkSize();
+    const chunk = state.textDripBuffer.slice(0, chunkSize);
+    state.textDripBuffer = state.textDripBuffer.slice(chunkSize);
+
+    this.logger.debug('dripNext: rendering', {
+      t: Math.round(performance.now()),
+      chunkSize,
+      chunkPreview: chunk.slice(0, 40),
+      remainingBuffer: state.textDripBuffer.length,
+      totalContentLen: state.currentTextContent.length + chunk.length,
+    });
+
+    state.currentTextContent += chunk;
+    void renderer.renderContent(state.currentTextEl, state.currentTextContent);
+
+    this.scrollToBottom();
+
+    // Schedule next drip — the setTimeout enforces minimum delay between renders
+    if (state.textDripBuffer.length > 0) {
+      this.scheduleDrip();
+    }
   }
 
   finalizeCurrentTextBlock(msg?: ChatMessage): void {
     const { state, renderer } = this.deps;
+
+    // Flush remaining drip buffer
+    if (state.textDripTimer !== null) {
+      clearTimeout(state.textDripTimer);
+      state.textDripTimer = null;
+    }
+    if (state.textDripBuffer) {
+      this.logger.debug('finalizeCurrentTextBlock: flushing buffer', {
+        bufferLen: state.textDripBuffer.length,
+        bufferPreview: state.textDripBuffer.slice(0, 60),
+      });
+      state.currentTextContent += state.textDripBuffer;
+      state.textDripBuffer = '';
+    }
+
     if (msg && state.currentTextContent) {
       msg.contentBlocks = msg.contentBlocks ?? [];
       msg.contentBlocks.push({ type: 'text', content: state.currentTextContent });
       if (state.currentTextEl) {
-        renderer.addTextCopyButton(state.currentTextEl, state.currentTextContent);
+        const el = state.currentTextEl;
+        const content = state.currentTextContent;
+        void renderer.renderContent(el, content).then(() => {
+          renderer.addTextCopyButton(el, content);
+        });
       }
     }
     state.currentTextEl = null;
@@ -511,6 +592,11 @@ export class StreamController {
   resetStreamingState(): void {
     const { state } = this.deps;
     this.hideThinkingIndicator();
+    if (state.textDripTimer !== null) {
+      clearTimeout(state.textDripTimer);
+      state.textDripTimer = null;
+    }
+    state.textDripBuffer = '';
     state.currentContentEl = null;
     state.currentTextEl = null;
     state.currentTextContent = '';

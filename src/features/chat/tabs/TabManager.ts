@@ -26,6 +26,7 @@ export interface TabManagerDeps {
   contentEl: HTMLElement;
   saveSettings?: (settings: CassandraSettings) => Promise<void>;
   sessionStorage?: SessionStorage;
+  deleteConversation?: (conversationId: string) => Promise<void>;
   onTabsChanged?: () => void;
   maxTabs: number;
 }
@@ -66,6 +67,7 @@ export class TabManager {
       containerEl,
       saveSettings: this.deps.saveSettings,
       sessionStorage: this.deps.sessionStorage,
+      deleteConversation: this.deps.deleteConversation,
       onTitleChanged: (title) => this.updateTabTitle(id, title),
     });
 

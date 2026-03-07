@@ -62,7 +62,13 @@ export default class CassandraPlugin extends Plugin {
     this.refreshConversationCache();
 
     this.registerView(VIEW_TYPE_CASSANDRA, (leaf: WorkspaceLeaf) =>
-      new CassandraView(leaf, this.getAgentConfig(), (s) => this.persistSettings(s), this.sessionStorage!),
+      new CassandraView(
+        leaf,
+        this.getAgentConfig(),
+        (s) => this.persistSettings(s),
+        this.sessionStorage!,
+        (conversationId) => this.deleteConversation(conversationId),
+      ),
     );
 
     this.registerView(VIEW_TYPE_THREADS, (leaf: WorkspaceLeaf) =>
@@ -74,7 +80,7 @@ export default class CassandraPlugin extends Plugin {
         sortService: this.sortService!,
         getConversationList: () => this.conversationCache,
         updateConversation: async (id, partial) => {
-          await this.sessionStorage!.updateMeta(id, partial as any);
+          await this.sessionStorage!.updateMeta(id, partial);
           await this.refreshConversationCache();
         },
         activateMainView: () => this.activateView(),
@@ -95,6 +101,14 @@ export default class CassandraPlugin extends Plugin {
           await this.activateView();
           const view = this.getCassandraView();
           if (view) await view.compactAndForkConversation(id);
+        },
+        deleteConversation: async (id) => {
+          const view = this.getCassandraView();
+          if (view) {
+            await view.deleteConversation(id, true);
+          } else {
+            await this.deleteConversation(id);
+          }
         },
         createConversationUnsorted: async () => {
           await this.activateView();
@@ -157,6 +171,17 @@ export default class CassandraPlugin extends Plugin {
     } catch { /* ignore */ }
     // Refresh threads view if open
     this.refreshThreadsView();
+  }
+
+  private async deleteConversation(conversationId: string): Promise<void> {
+    const sessionMeta = await this.sessionStorage?.load(conversationId);
+    if (sessionMeta?.runnerSessionId) {
+      const client = new RunnerClient(this.settings.runnerUrl || 'http://localhost:9080');
+      await client.deleteSession(sessionMeta.runnerSessionId);
+    }
+
+    await this.sessionStorage?.delete(conversationId);
+    await this.refreshConversationCache();
   }
 
   private refreshThreadsView(): void {

@@ -62,3 +62,14 @@ export type {
   ToolCallInfo,
   ToolDiffData,
 } from './tools';
+export type {
+  TranscriptAssistantEvent,
+  TranscriptContentBlock,
+  TranscriptEvent,
+  TranscriptEventBase,
+  TranscriptMessage,
+  TranscriptTextBlock,
+  TranscriptToolResultBlock,
+  TranscriptToolUseBlock,
+  TranscriptUserEvent,
+} from './transcript';

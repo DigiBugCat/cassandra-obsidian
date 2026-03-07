@@ -17,6 +17,7 @@ export class CassandraView extends ItemView {
   private config: AgentConfig;
   private saveSettings?: (settings: CassandraSettings) => Promise<void>;
   private sessionStorage?: SessionStorage;
+  private deleteConversationCallback?: (conversationId: string) => Promise<void>;
 
   private tabManager: TabManager | null = null;
   private tabBar: TabBar | null = null;
@@ -26,11 +27,13 @@ export class CassandraView extends ItemView {
     config: AgentConfig,
     saveSettings?: (settings: CassandraSettings) => Promise<void>,
     sessionStorage?: SessionStorage,
+    deleteConversation?: (conversationId: string) => Promise<void>,
   ) {
     super(leaf);
     this.config = config;
     this.saveSettings = saveSettings;
     this.sessionStorage = sessionStorage;
+    this.deleteConversationCallback = deleteConversation;
   }
 
   getViewType(): string { return VIEW_TYPE_CASSANDRA; }
@@ -70,6 +73,7 @@ export class CassandraView extends ItemView {
       contentEl,
       saveSettings: this.saveSettings,
       sessionStorage: this.sessionStorage,
+      deleteConversation: this.deleteConversationCallback,
       onTabsChanged: () => this.updateTabBar(),
       maxTabs: this.config.settings.maxTabs || 3,
     });
@@ -184,6 +188,19 @@ export class CassandraView extends ItemView {
   getActiveSessionId(): string | null {
     const tab = this.tabManager?.getActiveTab();
     return tab?.session.getConversationId() ?? null;
+  }
+
+  async deleteConversation(conversationId: string, skipConfirm = false): Promise<void> {
+    const existing = this.tabManager?.getTabs().find(t =>
+      t.session.getConversationId() === conversationId,
+    );
+    if (existing) {
+      await existing.session.deleteConversation(skipConfirm);
+      this.updateTabBar();
+      return;
+    }
+
+    await this.deleteConversationCallback?.(conversationId);
   }
 
   async onClose(): Promise<void> {

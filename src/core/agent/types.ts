@@ -12,6 +12,7 @@ import type {
   ExitPlanModeCallback,
   ImageAttachment,
   StreamEvent,
+  TranscriptEvent,
 } from '../types';
 
 /** Minimal config that agent services need. Avoids coupling to the full plugin. */
@@ -32,6 +33,12 @@ export interface EnsureReadyOptions {
   sessionId?: string;
   externalContextPaths?: string[];
   force?: boolean;
+}
+
+export interface ChatSlashCommand {
+  name: string;
+  description: string;
+  argumentHint: string;
 }
 
 /** User approval callback. */
@@ -65,10 +72,6 @@ export interface AgentService {
 
   cancel(): void;
   cleanup(): void;
-  resetSession(): void;
-
-  getSessionId(): string | null;
-  setSessionId(id: string | null, externalContextPaths?: string[]): void;
 
   isReady(): boolean;
   onReadyStateChange(listener: (ready: boolean) => void): () => void;
@@ -80,4 +83,23 @@ export interface AgentService {
   setExitPlanModeCallback?(callback: ExitPlanModeCallback | null): void;
   setPermissionModeSyncCallback?(callback: ((sdkMode: string) => void) | null): void;
   setOnSessionCreated?(callback: ((sessionId: string) => void) | null): void;
+}
+
+export interface ConversationSessionCapability {
+  resetSession(): void;
+  getSessionId(): string | null;
+  attachToSession(sessionId: string, externalContextPaths?: string[]): Promise<boolean>;
+  getTranscript(): Promise<TranscriptEvent[]>;
+  rewindToUserMessage(uuid: string): void;
+  scheduleForkFromUserMessage(uuid: string | undefined): void;
+  stopRemoteSession(): Promise<void>;
+  deleteRemoteSession(): Promise<void>;
+}
+
+export interface ChatAgentService extends AgentService, ConversationSessionCapability {
+  updateConfig(config: AgentConfig): void;
+  reconnect(): Promise<boolean>;
+  getCommands(): Promise<ChatSlashCommand[]>;
+  suppressTitleGeneration(): void;
+  setOnTitleGenerated(callback: ((title: string) => void) | null): void;
 }

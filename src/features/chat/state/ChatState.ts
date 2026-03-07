@@ -63,6 +63,8 @@ interface ChatRenderContext {
   writeEditStates: Map<string, WriteEditState>;
   pendingTools: Map<string, PendingToolCall>;
   hookElements: Map<string, HTMLElement>;
+  textDripBuffer: string;
+  textDripTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ChatStateData extends ChatRuntimeState, ChatRenderContext {}
@@ -97,6 +99,8 @@ function createInitialState(): ChatStateData {
     writeEditStates: new Map(),
     pendingTools: new Map(),
     hookElements: new Map(),
+    textDripBuffer: '',
+    textDripTimer: null,
   };
 }
 
@@ -215,9 +219,22 @@ export class ChatState {
   get pendingTools(): Map<string, PendingToolCall> { return this.state.pendingTools; }
   get hookElements(): Map<string, HTMLElement> { return this.state.hookElements; }
 
+  // ── Text drip buffer ──
+
+  get textDripBuffer(): string { return this.state.textDripBuffer; }
+  set textDripBuffer(value: string) { this.state.textDripBuffer = value; }
+
+  get textDripTimer(): ReturnType<typeof setTimeout> | null { return this.state.textDripTimer; }
+  set textDripTimer(value: ReturnType<typeof setTimeout> | null) { this.state.textDripTimer = value; }
+
   // ── Resets ──
 
   resetStreamingState(): void {
+    if (this.state.textDripTimer !== null) {
+      clearTimeout(this.state.textDripTimer);
+      this.state.textDripTimer = null;
+    }
+    this.state.textDripBuffer = '';
     this.state.currentContentEl = null;
     this.state.currentTextEl = null;
     this.state.currentTextContent = '';

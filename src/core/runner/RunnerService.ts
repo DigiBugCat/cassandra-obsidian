@@ -11,9 +11,9 @@ import { Notice } from 'obsidian';
 import type {
   AgentBackend,
   AgentConfig,
-  AgentService,
   ApprovalCallback,
   AskUserQuestionCallback,
+  ChatAgentService,
   EnsureReadyOptions,
   QueryOptions,
 } from '../agent';
@@ -23,6 +23,7 @@ import type {
   ExitPlanModeCallback,
   ImageAttachment,
   StreamEvent,
+  TranscriptEvent,
 } from '../types';
 import { THINKING_BUDGETS } from '../types';
 import { RunnerClient } from './RunnerClient';
@@ -33,7 +34,7 @@ const log = createLogger('RunnerService');
 
 type ReadyListener = (ready: boolean) => void;
 
-export class RunnerService implements AgentService {
+export class RunnerService implements ChatAgentService {
 
   private config: AgentConfig;
   private client: RunnerClient;
@@ -60,6 +61,17 @@ export class RunnerService implements AgentService {
   private currentThinkingBudget: string | undefined;
   private currentPermissionMode: string | undefined;
   private pendingReady: Promise<boolean> | null = null;
+  private readonly onClientConnected = (): void => {
+    if (!this.runnerSessionId) return;
+    this.active = true;
+    this.setReady(true);
+  };
+  private readonly onClientDisconnected = (): void => {
+    if (!this.active) return;
+    this.active = false;
+    new Notice('Runner disconnected — reconnecting...');
+    this.setReady(false);
+  };
 
   // Active query resolvers
   private queryResolvers: Array<{
@@ -79,12 +91,8 @@ export class RunnerService implements AgentService {
       this.ownsClient = true;
     }
 
-    this.client.on('disconnected', () => {
-      if (this.active) {
-        new Notice('Runner disconnected — reconnecting...');
-        this.setReady(false);
-      }
-    });
+    this.client.on('connected', this.onClientConnected);
+    this.client.on('disconnected', this.onClientDisconnected);
   }
 
   /** Update config (e.g. when settings change). */
@@ -196,70 +204,21 @@ export class RunnerService implements AgentService {
   }
 
   cleanup(): void {
-    for (const cleanup of this.eventCleanups) cleanup();
-    this.eventCleanups = [];
-
-    if (this.runnerSessionId) {
-      this.client.unsubscribe(this.runnerSessionId);
-      this.client.deleteSession(this.runnerSessionId).catch(() => {});
-      this.runnerSessionId = null;
+    this.detachCurrentSession();
+    this.client.removeListener('connected', this.onClientConnected);
+    this.client.removeListener('disconnected', this.onClientDisconnected);
+    if (this.ownsClient) {
+      this.client.disconnect();
     }
-
-    if (this.ownsClient) this.client.disconnect();
-    this.active = false;
-    this.setReady(false);
   }
 
   /** Reconnect to the current session. Resumes stopped sessions via the orchestrator. */
   async reconnect(): Promise<boolean> {
-    if (!this.runnerSessionId) return false;
-    const sessionId = this.runnerSessionId;
-    try {
-      if (!this.client.isConnected()) await this.client.connect();
-
-      // Check session status on the orchestrator
-      let status: string;
-      try {
-        const session = await this.client.getSession(sessionId);
-        status = session.status;
-      } catch {
-        log.info('reconnect_session_not_found', { session_id: sessionId });
-        return false;
-      }
-
-      // If stopped/error, ask the orchestrator to resume (respawn container with same session ID)
-      if (status === 'stopped' || status === 'error') {
-        log.info('reconnect_resuming_stopped_session', { session_id: sessionId, status });
-        try {
-          await this.client.resumeSession(sessionId);
-          log.info('reconnect_resume_success', { session_id: sessionId });
-        } catch (err) {
-          log.warn('reconnect_resume_failed', { session_id: sessionId, error: String(err) });
-          return false;
-        }
-      }
-
-      this.setupEventHandlers(sessionId);
-      this.client.subscribe(sessionId);
-      this.active = true;
-      this.setReady(true);
-      log.info('reconnect_success', { session_id: sessionId });
-      return true;
-    } catch (err) {
-      log.warn('reconnect_failed', { session_id: sessionId, error: String(err) });
-      return false;
-    }
+    return this.runnerSessionId ? this.attachToSession(this.runnerSessionId) : false;
   }
 
   resetSession(): void {
-    if (this.runnerSessionId) {
-      this.client.unsubscribe(this.runnerSessionId);
-      this.client.deleteSession(this.runnerSessionId).catch(() => {});
-    }
-    this.runnerSessionId = null;
-    this.sdkSessionId = null;
-    this.active = false;
-    this.setReady(false);
+    this.detachCurrentSession();
   }
 
   getSessionId(): string | null {
@@ -267,23 +226,11 @@ export class RunnerService implements AgentService {
   }
 
   setSessionId(id: string | null, externalContextPaths?: string[]): void {
-    if (id === this.runnerSessionId) return;
-
-    if (this.runnerSessionId) {
-      this.client.unsubscribe(this.runnerSessionId);
-      for (const cleanup of this.eventCleanups) cleanup();
-      this.eventCleanups = [];
+    if (!id) {
+      this.resetSession();
+      return;
     }
-
-    this.runnerSessionId = id;
-    this.sdkSessionId = null;
-
-    if (id) {
-      this.ensureReady({ sessionId: id, externalContextPaths });
-    } else {
-      this.active = false;
-      this.setReady(false);
-    }
+    void this.attachToSession(id, externalContextPaths);
   }
 
   isReady(): boolean {
@@ -309,62 +256,62 @@ export class RunnerService implements AgentService {
 
   private async doEnsureReady(options?: EnsureReadyOptions): Promise<boolean> {
     try {
+      if (!options?.force && this.runnerSessionId && this.active && this.client.isConnected()) {
+        return true;
+      }
+
+      const sessionIdToAttach = options?.force ? null : options?.sessionId ?? this.runnerSessionId;
+      if (sessionIdToAttach) {
+        return this.attachToSession(sessionIdToAttach, options?.externalContextPaths);
+      }
+
       if (!this.client.isConnected()) await this.client.connect();
 
-      // Re-attach to existing session
-      if (!this.runnerSessionId && options?.sessionId) {
-        try {
-          const session = await this.client.getSession(options.sessionId);
-          if (session && session.status !== 'stopped' && session.status !== 'error') {
-            this.runnerSessionId = options.sessionId;
-            log.info('session_reattached', { session_id: this.runnerSessionId });
-          }
-        } catch { /* will create new */ }
-      }
-
       // Create session if needed
-      if (!this.runnerSessionId || options?.force) {
-        const { settings, vaultPath } = this.config;
-        const budgetConfig = THINKING_BUDGETS.find(b => b.value === settings.thinkingBudget);
+      const { settings, vaultPath } = this.config;
+      const budgetConfig = THINKING_BUDGETS.find(b => b.value === settings.thinkingBudget);
+      const additionalDirectories = Array.from(new Set([
+        ...settings.persistentExternalContextPaths,
+        ...(options?.externalContextPaths ?? []),
+      ]));
 
-        const req: RunnerSessionRequest = {
-          workspace: settings.runnerVaultName ? undefined : vaultPath,
-          vault: settings.runnerVaultName || undefined,
-          model: settings.model,
-          systemPrompt: settings.systemPrompt || undefined,
-          thinking: (budgetConfig?.tokens ?? 0) > 0,
-          permissionMode: settings.permissionMode,
-          compactInstructions: settings.compactInstructions || undefined,
-          allowedPaths: settings.enableVaultRestriction ? [vaultPath] : undefined,
-          additionalDirectories: settings.persistentExternalContextPaths.length > 0
-            ? settings.persistentExternalContextPaths : undefined,
-          mcpServers: this.parseMcpServers(settings.mcpServersJson),
-          agentId: settings.agentName || undefined,
-        };
+      const req: RunnerSessionRequest = {
+        workspace: settings.runnerVaultName ? undefined : vaultPath,
+        vault: settings.runnerVaultName || undefined,
+        model: settings.model,
+        systemPrompt: settings.systemPrompt || undefined,
+        thinking: (budgetConfig?.tokens ?? 0) > 0,
+        permissionMode: settings.permissionMode,
+        compactInstructions: settings.compactInstructions || undefined,
+        allowedPaths: settings.enableVaultRestriction ? [vaultPath] : undefined,
+        additionalDirectories: additionalDirectories.length > 0 ? additionalDirectories : undefined,
+        mcpServers: this.parseMcpServers(settings.mcpServersJson),
+        agentId: settings.agentName || undefined,
+      };
 
-        log.info('create_session_request', { workspace: req.workspace, model: req.model, permissionMode: req.permissionMode, thinking: req.thinking });
-        const result = await this.client.createSession(req);
-        this.runnerSessionId = result.session_id;
-        log.info('session_created', { session_id: this.runnerSessionId });
+      log.info('create_session_request', {
+        workspace: req.workspace,
+        model: req.model,
+        permissionMode: req.permissionMode,
+        thinking: req.thinking,
+      });
+      const result = await this.client.createSession(req);
+      this.runnerSessionId = result.session_id;
+      log.info('session_created', { session_id: this.runnerSessionId });
 
-        // Snapshot settings at creation so applyDynamicOptions detects subsequent changes
-        this.currentModel = settings.model;
-        this.currentThinkingBudget = settings.thinkingBudget;
-        this.currentPermissionMode = settings.permissionMode;
+      // Snapshot settings at creation so applyDynamicOptions detects subsequent changes
+      this.currentModel = settings.model;
+      this.currentThinkingBudget = settings.thinkingBudget;
+      this.currentPermissionMode = settings.permissionMode;
 
-        this.onSessionCreatedCallback?.(this.runnerSessionId);
-      }
-
-      this.setupEventHandlers(this.runnerSessionId!);
-      this.client.subscribe(this.runnerSessionId!);
-
-      this.active = true;
-      this.setReady(true);
+      this.activateSession(this.runnerSessionId);
+      this.onSessionCreatedCallback?.(this.runnerSessionId);
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error('ensure_ready_failed', { error: msg });
       new Notice(`Runner connection failed: ${msg}`);
+      this.detachCurrentSession();
       this.setReady(false);
       return false;
     }
@@ -389,24 +336,126 @@ export class RunnerService implements AgentService {
 
   // ── Transcript ─────────────────────────────────────────────────────
 
-  async getTranscript(): Promise<any[]> {
+  async getTranscript(): Promise<TranscriptEvent[]> {
     if (!this.runnerSessionId) return [];
     return this.client.getTranscript(this.runnerSessionId);
   }
 
   // ── Fork / Resume ──────────────────────────────────────────────────
 
-  getClient(): RunnerClient { return this.client; }
-
   suppressTitleGeneration(): void { this.titleGenerated = true; }
 
-  setPendingResumeAt(uuid: string | undefined): void { this.pendingResumeAt = uuid; }
+  scheduleForkFromUserMessage(uuid: string | undefined): void { this.pendingResumeAt = uuid; }
+
+  setPendingResumeAt(uuid: string | undefined): void { this.scheduleForkFromUserMessage(uuid); }
+
+  rewindToUserMessage(uuid: string): void {
+    if (!this.runnerSessionId || !this.client.isConnected()) return;
+    this.client.rewind(this.runnerSessionId, uuid);
+  }
+
+  async attachToSession(sessionId: string, externalContextPaths?: string[]): Promise<boolean> {
+    try {
+      if (!this.client.isConnected()) await this.client.connect();
+
+      let targetSessionId = sessionId;
+      let status: string;
+      try {
+        const session = await this.client.getSession(sessionId);
+        status = session.status;
+      } catch (err) {
+        log.info('attach_session_missing', {
+          session_id: sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        this.detachCurrentSession();
+        return false;
+      }
+
+      if (status === 'stopped' || status === 'error') {
+        log.info('attach_resuming_session', { session_id: sessionId, status });
+        const resumed = await this.client.resumeSession(sessionId);
+        targetSessionId = resumed.session_id;
+      }
+
+      this.activateSession(targetSessionId);
+      log.info('session_attached', {
+        session_id: targetSessionId,
+        status,
+        externalContextPaths: externalContextPaths?.length ?? 0,
+      });
+      return true;
+    } catch (err) {
+      log.warn('attach_session_failed', { session_id: sessionId, error: String(err) });
+      this.detachCurrentSession();
+      return false;
+    }
+  }
+
+  async stopRemoteSession(): Promise<void> {
+    if (!this.runnerSessionId) return;
+    const sessionId = this.runnerSessionId;
+    await this.client.stopSession(sessionId);
+    if (this.client.isConnected()) {
+      this.client.unsubscribe(sessionId);
+    }
+    this.clearEventHandlers();
+    this.resolveAllQueries();
+    this.sdkSessionId = null;
+    this.pendingResumeAt = undefined;
+    this.active = false;
+    this.setReady(false);
+  }
+
+  async deleteRemoteSession(): Promise<void> {
+    if (!this.runnerSessionId) return;
+    const sessionId = this.runnerSessionId;
+    this.detachCurrentSession();
+    await this.client.deleteSession(sessionId);
+  }
 
   // ── Internal ───────────────────────────────────────────────────────
 
-  private setupEventHandlers(sessionId: string): void {
+  private activateSession(sessionId: string): void {
+    const previousSessionId = this.runnerSessionId;
+    if (
+      previousSessionId &&
+      previousSessionId !== sessionId &&
+      this.client.isConnected()
+    ) {
+      this.client.unsubscribe(previousSessionId);
+    }
+
+    this.clearEventHandlers();
+    this.runnerSessionId = sessionId;
+    this.sdkSessionId = null;
+    this.active = true;
+    this.setupEventHandlers(sessionId);
+    this.client.subscribe(sessionId);
+    this.setReady(true);
+  }
+
+  private detachCurrentSession(): void {
+    const sessionId = this.runnerSessionId;
+    if (sessionId && this.client.isConnected()) {
+      this.client.unsubscribe(sessionId);
+    }
+    this.clearEventHandlers();
+    this.resolveAllQueries();
+    this.runnerSessionId = null;
+    this.sdkSessionId = null;
+    this.pendingResumeAt = undefined;
+    this.active = false;
+    this.setReady(false);
+  }
+
+  private clearEventHandlers(): void {
     for (const cleanup of this.eventCleanups) cleanup();
     this.eventCleanups = [];
+  }
+
+  private setupEventHandlers(sessionId: string): void {
+    this.clearEventHandlers();
 
     const { settings } = this.config;
     let sawStreamText = false;

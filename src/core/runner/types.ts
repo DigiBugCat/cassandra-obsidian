@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../types';
+
 /**
  * Runner protocol types. Defines the HTTP + WS contract between
  * Cassandra and the claude-agent-runner orchestrator.
@@ -33,13 +35,21 @@ export interface RunnerSessionInfo {
   created_at: string;
   last_activity: string;
   message_count: number;
-  source: { type: string; workspace?: string };
+  source: {
+    type: 'repo' | 'workspace' | 'vault' | 'ephemeral';
+    repo?: string;
+    branch?: string;
+    workspace?: string;
+    vault?: string;
+  };
+  agent_id?: string;
 }
 
 export interface RunnerSessionDetail extends RunnerSessionInfo {
   context_tokens?: number;
   compact_count?: number;
   error?: string;
+  forked_from?: string;
 }
 
 export interface RunnerForkRequest {
@@ -177,3 +187,5 @@ export interface RunnerSlashCommand {
   description: string;
   argumentHint: string;
 }
+
+export type RunnerTranscriptEvent = TranscriptEvent;

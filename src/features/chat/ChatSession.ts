@@ -6,14 +6,28 @@
  */
 
 import type { App, Component } from 'obsidian';
-import { setIcon } from 'obsidian';
+import { Notice, setIcon } from 'obsidian';
 
-import type { AgentConfig, AgentService } from '../../core/agent';
+import type { AgentConfig, AgentService, ChatAgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
 import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
-import type { CassandraSettings, ChatMessage, ConversationMeta, ThinkingBudget, ToolCallInfo, UsageInfo } from '../../core/types';
+import type {
+  CassandraSettings,
+  ChatMessage,
+  ConversationMeta,
+  ThinkingBudget,
+  ToolCallInfo,
+  TranscriptAssistantEvent,
+  TranscriptContentBlock,
+  TranscriptEvent,
+  TranscriptMessage,
+  TranscriptTextBlock,
+  TranscriptToolResultBlock,
+  UsageInfo,
+} from '../../core/types';
 import { ApprovalModal } from '../../shared/ApprovalModal';
+import { confirm } from '../../shared/ConfirmModal';
 import { SlashCommandDropdown } from '../../shared/slash/SlashCommandDropdown';
 import { InputController } from './controllers/InputController';
 import { StreamController } from './controllers/StreamController';
@@ -30,13 +44,14 @@ export interface ChatSessionDeps {
   containerEl: HTMLElement;
   saveSettings?: (settings: CassandraSettings) => Promise<void>;
   sessionStorage?: SessionStorage;
+  deleteConversation?: (conversationId: string) => Promise<void>;
   onTitleChanged?: (title: string) => void;
 }
 
 export class ChatSession {
   private config: AgentConfig;
   private deps: ChatSessionDeps;
-  private service: RunnerService | null = null;
+  private service: ChatAgentService | null = null;
   private state: ChatState;
   private renderer: MessageRenderer;
   private streamController: StreamController;
@@ -239,7 +254,7 @@ export class ChatSession {
         this.messageCount += 2; // user + assistant
         if (!this.firstUserMessage) {
           this.firstUserMessage = prompt.substring(0, 80);
-          this.conversationTitle = prompt.substring(0, 50) || 'New conversation';
+          this.setConversationTitle(prompt.substring(0, 50) || 'New conversation');
         }
       }
       this.inputController.handleSend();
@@ -332,8 +347,7 @@ export class ChatSession {
       setIcon(deleteBtn, 'x');
       deleteBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        await storage.delete(meta.id);
-        await this.renderHistoryDropdown();
+        await this.deleteConversationFromHistory(meta);
       });
 
       item.addEventListener('click', () => {
@@ -345,23 +359,122 @@ export class ChatSession {
 
   getConversationId(): string { return this.conversationId; }
 
+  public async deleteConversation(skipConfirm = false): Promise<void> {
+    if (!skipConfirm) {
+      const shouldDelete = await confirm(
+        this.deps.app,
+        `Delete conversation "${this.conversationTitle}" permanently?`,
+        'Delete',
+      );
+      if (!shouldDelete) return;
+    }
+
+    const conversationId = this.conversationId;
+    if (this.service?.getSessionId()) {
+      await this.service.deleteRemoteSession();
+    }
+
+    await this.deps.sessionStorage?.delete(conversationId);
+    await this.startFreshConversation(false);
+  }
+
+  private setConversationTitle(title: string): void {
+    this.conversationTitle = title;
+    this.deps.onTitleChanged?.(title);
+  }
+
+  private isBootstrapConversation(): boolean {
+    return this.messageCount === 0
+      && !this.firstUserMessage
+      && this.conversationTitle === 'New conversation';
+  }
+
+  private async deleteBootstrapSessionIfNeeded(): Promise<void> {
+    if (!this.isBootstrapConversation() || !this.service?.getSessionId()) {
+      return;
+    }
+
+    const bootstrapConversationId = this.conversationId;
+    try {
+      await this.service.deleteRemoteSession();
+      await this.deps.sessionStorage?.delete(bootstrapConversationId);
+    } catch (err) {
+      log.warn('bootstrap_session_delete_failed', { error: String(err) });
+    }
+  }
+
+  private resetConversationViewState(): void {
+    this.state.resetStreamingState();
+    this.state.clearMaps();
+    this.messagesEl.empty();
+    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
+  }
+
+  private async startFreshConversation(saveCurrent: boolean): Promise<void> {
+    if (saveCurrent && this.isBootstrapConversation()) {
+      await this.deleteBootstrapSessionIfNeeded();
+    } else if (saveCurrent) {
+      await this.saveSessionMetadata();
+    }
+
+    this.service?.resetSession();
+    this.resetConversationViewState();
+
+    this.conversationId = crypto.randomUUID();
+    this.setConversationTitle('New conversation');
+    this.conversationCreatedAt = Date.now();
+    this.messageCount = 0;
+    this.firstUserMessage = '';
+
+    this.fileManager.reset();
+    this.slashDropdown.invalidateCache();
+
+    this.statusEl.textContent = 'Connecting...';
+    const ready = await this.service?.ensureReady();
+    this.toolbar.update({ isReady: !!ready });
+    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
+    await this.saveSessionMetadata();
+    this.inputEl.focus();
+  }
+
+  private async deleteConversationFromHistory(meta: ConversationMeta): Promise<void> {
+    if (meta.id === this.conversationId) {
+      await this.deleteConversation();
+      await this.renderHistoryDropdown();
+      return;
+    }
+
+    const shouldDelete = await confirm(
+      this.deps.app,
+      `Delete conversation "${meta.title}" permanently?`,
+      'Delete',
+    );
+    if (!shouldDelete) return;
+
+    await this.deps.deleteConversation?.(meta.id);
+    await this.renderHistoryDropdown();
+  }
+
   /** Attach to an existing runner session (e.g. from fork). Loads transcript after connecting. */
   async attachToRunnerSession(runnerSessionId: string): Promise<void> {
     this.service?.suppressTitleGeneration();
     this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
     this.statusEl.textContent = 'Connecting to forked session...';
 
-    this.service?.setSessionId(runnerSessionId);
+    await this.deleteBootstrapSessionIfNeeded();
 
-    const cleanup = this.service?.onReadyStateChange(async (ready) => {
-      if (ready) {
-        cleanup?.();
-        this.toolbar.update({ isReady: true });
-        this.statusEl.textContent = this.formatStatusText();
-        await this.loadTranscript();
-        await this.saveSessionMetadata();
-      }
-    });
+    const attached = await this.service?.attachToSession(runnerSessionId);
+    if (!attached) {
+      this.toolbar.update({ isReady: false });
+      this.statusEl.textContent = 'Session unavailable';
+      new Notice('Session unavailable');
+      return;
+    }
+
+    this.toolbar.update({ isReady: true });
+    this.statusEl.textContent = this.formatStatusText();
+    await this.loadTranscript();
+    await this.saveSessionMetadata();
   }
 
   async restoreFromId(id: string): Promise<void> {
@@ -383,38 +496,33 @@ export class ChatSession {
       return;
     }
 
-    // Save current session before switching
-    await this.saveSessionMetadata();
+    if (this.isBootstrapConversation()) {
+      await this.deleteBootstrapSessionIfNeeded();
+    } else {
+      await this.saveSessionMetadata();
+    }
+    this.resetConversationViewState();
 
-    // Reset state
-    this.state.resetStreamingState();
-    this.state.clearMaps();
-    this.messagesEl.empty();
-
-    // Adopt new conversation identity
     this.conversationId = meta.id;
-    this.conversationTitle = meta.title;
+    this.setConversationTitle(meta.title);
     this.conversationCreatedAt = meta.createdAt;
     this.messageCount = meta.messageCount;
     this.firstUserMessage = meta.preview;
     this.service?.suppressTitleGeneration();
 
-    // Re-attach to the runner session
-    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
     this.statusEl.textContent = 'Reconnecting...';
+    const attached = await this.service?.attachToSession(sessionMeta.runnerSessionId);
+    if (!attached) {
+      this.toolbar.update({ isReady: false });
+      this.statusEl.textContent = 'Session unavailable';
+      new Notice('Session unavailable');
+      this.inputEl.focus();
+      return;
+    }
 
-    this.service?.setSessionId(sessionMeta.runnerSessionId);
-
-    // Wait for ready, then load transcript
-    const cleanup = this.service?.onReadyStateChange(async (ready) => {
-      if (ready) {
-        cleanup?.();
-        this.toolbar.update({ isReady: true });
-        this.statusEl.textContent = this.formatStatusText();
-        await this.loadTranscript();
-      }
-    });
-
+    this.toolbar.update({ isReady: true });
+    this.statusEl.textContent = this.formatStatusText();
+    await this.loadTranscript();
     this.inputEl.focus();
   }
 
@@ -427,16 +535,15 @@ export class ChatSession {
       // Build a tool_use_id → result map from the transcript for pairing
       const toolResults = new Map<string, { content: string; is_error: boolean }>();
       for (const event of events) {
-        if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
-          for (const block of event.message.content) {
-            if (block.type === 'tool_result' && block.tool_use_id) {
-              const text = typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                  ? block.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
-                  : '';
-              toolResults.set(block.tool_use_id, { content: text, is_error: !!block.is_error });
-            }
+        const assistantEvent = this.asAssistantEvent(event);
+        if (!assistantEvent) continue;
+
+        for (const block of this.getMessageBlocks(assistantEvent.message)) {
+          if (this.isToolResultBlock(block) && block.tool_use_id) {
+            toolResults.set(block.tool_use_id, {
+              content: this.extractToolResultText(block.content),
+              is_error: !!block.is_error,
+            });
           }
         }
       }
@@ -475,7 +582,7 @@ export class ChatSession {
 
   /** Parse JSONL transcript events into ChatMessage[]. */
   private parseTranscriptEvents(
-    events: any[],
+    events: TranscriptEvent[],
     toolResults: Map<string, { content: string; is_error: boolean }>,
   ): ChatMessage[] {
     const messages: ChatMessage[] = [];
@@ -513,29 +620,48 @@ export class ChatSession {
     return messages;
   }
 
+  private asAssistantEvent(event: TranscriptEvent): TranscriptAssistantEvent | null {
+    return event.type === 'assistant' ? event as TranscriptAssistantEvent : null;
+  }
+
+  private isTextBlock(block: TranscriptContentBlock): block is TranscriptTextBlock {
+    return block.type === 'text';
+  }
+
+  private isToolResultBlock(block: TranscriptContentBlock): block is TranscriptToolResultBlock {
+    return block.type === 'tool_result';
+  }
+
+  private getMessageBlocks(message?: TranscriptMessage): TranscriptContentBlock[] {
+    return Array.isArray(message?.content) ? message.content : [];
+  }
+
+  private extractToolResultText(content: TranscriptToolResultBlock['content']): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+      .filter((block) => this.isTextBlock(block))
+      .map((block) => block.text)
+      .join('\n');
+  }
+
   /** Extract text content from a transcript message. */
-  private extractText(message: any): string {
+  private extractText(message?: TranscriptMessage): string {
     if (!message) return '';
     if (typeof message.content === 'string') return message.content;
-    if (Array.isArray(message.content)) {
-      return message.content
-        .filter((b: any) => b.type === 'text' && b.text)
-        .map((b: any) => b.text)
-        .join('\n\n');
-    }
-    if (typeof message === 'string') return message;
-    return '';
+    return this.getMessageBlocks(message)
+      .filter((block) => this.isTextBlock(block))
+      .map((block) => block.text)
+      .join('\n\n');
   }
 
   /** Extract tool_use blocks from a transcript assistant message. */
   private extractToolCalls(
-    message: any,
+    message: TranscriptMessage | undefined,
     toolResults: Map<string, { content: string; is_error: boolean }>,
   ): ToolCallInfo[] {
-    if (!message || !Array.isArray(message.content)) return [];
-
     const toolCalls: ToolCallInfo[] = [];
-    for (const block of message.content) {
+    for (const block of this.getMessageBlocks(message)) {
       if (block.type === 'tool_use' && block.id && block.name) {
         const result = toolResults.get(block.id);
         toolCalls.push({
@@ -553,37 +679,7 @@ export class ChatSession {
   // ── New conversation ─────────────────────────────────────────
 
   private async handleNewConversation(): Promise<void> {
-    // Save current session
-    await this.saveSessionMetadata();
-
-    // Reset runner session
-    this.service?.resetSession();
-    this.state.resetStreamingState();
-    this.state.clearMaps();
-    this.messagesEl.empty();
-
-    // New conversation identity
-    this.conversationId = crypto.randomUUID();
-    this.conversationTitle = 'New conversation';
-    this.conversationCreatedAt = Date.now();
-    this.messageCount = 0;
-    this.firstUserMessage = '';
-
-    // Reset file context and slash command cache
-    this.fileManager.reset();
-    this.slashDropdown.invalidateCache();
-
-    // Re-init
-    this.toolbar.update({ isReady: false, usage: null, isStreaming: false });
-    this.statusEl.textContent = 'Connecting...';
-    const ready = await this.service?.ensureReady();
-    this.toolbar.update({ isReady: !!ready });
-    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
-
-    // Save the new session immediately
-    await this.saveSessionMetadata();
-
-    this.inputEl.focus();
+    await this.startFreshConversation(true);
   }
 
   // ── Rewind / Fork ─────────────────────────────────────────────
@@ -615,9 +711,7 @@ export class ChatSession {
       allMsgEls[i].remove();
     }
 
-    // Tell the runner to rewind
-    // RunnerClient.rewind uses the user_message_uuid to rewind the SDK session
-    (this.service as any)?.client?.rewind(sessionId, msg.sdkUserUuid);
+    this.service?.rewindToUserMessage(msg.sdkUserUuid);
 
     log.info('rewind', { messageId, sdkUserUuid: msg.sdkUserUuid, removedCount: messages.length - msgIndex });
     await this.saveSessionMetadata();
@@ -633,8 +727,7 @@ export class ChatSession {
       return;
     }
 
-    // Set pendingResumeAt so the next query forks at this point
-    this.service?.setPendingResumeAt(msg.sdkUserUuid);
+    this.service?.scheduleForkFromUserMessage(msg.sdkUserUuid);
 
     // Clear the current messages and DOM (the fork creates a new session)
     this.state.messages = [];
@@ -653,16 +746,21 @@ export class ChatSession {
     const storage = this.deps.sessionStorage;
     if (!storage) return;
 
+    const existingMeta = await storage.load(this.conversationId);
     const meta: SessionMetadata = {
       id: this.conversationId,
       title: this.conversationTitle,
       createdAt: this.conversationCreatedAt,
       updatedAt: Date.now(),
-      lastResponseAt: this.state.usage ? Date.now() : undefined,
+      lastResponseAt: this.state.usage ? Date.now() : existingMeta?.lastResponseAt,
       runnerSessionId: this.service?.getSessionId() ?? null,
-      usage: this.state.usage ?? undefined,
+      usage: this.state.usage ?? existingMeta?.usage,
+      titleGenerationStatus: existingMeta?.titleGenerationStatus,
       messageCount: this.messageCount,
-      preview: this.firstUserMessage || 'New conversation',
+      preview: this.firstUserMessage || existingMeta?.preview || 'New conversation',
+      threadFolderId: existingMeta?.threadFolderId,
+      threadPinned: existingMeta?.threadPinned,
+      threadArchived: existingMeta?.threadArchived,
     };
 
     try {
@@ -732,15 +830,14 @@ export class ChatSession {
       return decision === 'cancel' ? 'deny' : decision;
     });
 
-    this.service.setOnSessionCreated((sessionId) => {
+    this.service.setOnSessionCreated?.((sessionId) => {
       log.info('session_created_callback', { sessionId });
       this.saveSessionMetadata();
     });
 
     this.service.setOnTitleGenerated((title) => {
       log.info('title_generated', { title });
-      this.conversationTitle = title;
-      this.deps.onTitleChanged?.(title);
+      this.setConversationTitle(title);
       this.saveSessionMetadata();
     });
 

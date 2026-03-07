@@ -31,6 +31,7 @@ export interface ThreadsPaneCallbacks {
   onOpenConversation: (conversationId: string) => Promise<void>;
   onForkConversation: (conversationId: string) => Promise<void>;
   onCompactAndForkConversation: (conversationId: string) => Promise<void>;
+  onDeleteConversation: (conversationId: string) => Promise<void>;
   onCreateThreadInFolder: (folderId: string) => Promise<void>;
   onCreateThreadUnsorted: () => Promise<void>;
   onRefreshRequest?: () => void;
@@ -694,6 +695,19 @@ export class ThreadsPane {
           await this.refresh();
         });
       });
+      menu.addItem(item => {
+        item.setTitle('Delete permanently');
+        item.setIcon('trash-2');
+        item.onClick(async () => {
+          const shouldDelete = await confirm(
+            this.deps.app,
+            `Delete thread "${conversation.title || 'New conversation'}" permanently?`,
+            'Delete',
+          );
+          if (!shouldDelete) return;
+          await this.callbacks.onDeleteConversation(conversation.id);
+        });
+      });
       menu.showAtMouseEvent(e);
       return;
     }
@@ -794,6 +808,20 @@ export class ThreadsPane {
         await this.deps.organizer.archive(conversation.id);
         this.callbacks.onRefreshRequest?.();
         await this.refresh();
+      });
+    });
+
+    menu.addItem(item => {
+      item.setTitle('Delete permanently');
+      item.setIcon('trash-2');
+      item.onClick(async () => {
+        const shouldDelete = await confirm(
+          this.deps.app,
+          `Delete thread "${conversation.title || 'New conversation'}" permanently?`,
+          'Delete',
+        );
+        if (!shouldDelete) return;
+        await this.callbacks.onDeleteConversation(conversation.id);
       });
     });
 

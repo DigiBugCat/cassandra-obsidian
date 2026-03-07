@@ -17,6 +17,7 @@ import type {
   RunnerSessionDetail,
   RunnerSessionRequest,
   RunnerSlashCommand,
+  RunnerTranscriptEvent,
   ServerFrame,
   StatusFrame,
   UserContentBlock,
@@ -44,6 +45,7 @@ export class RunnerClient extends EventEmitter {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private requestCounter = 0;
   private activeSubscriptions = new Set<string>();
+  private intentionalDisconnect = false;
 
   constructor(baseUrl: string = 'http://localhost:9080') {
     super();
@@ -67,7 +69,22 @@ export class RunnerClient extends EventEmitter {
   }
 
   async deleteSession(id: string): Promise<void> {
-    await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'DELETE' }).catch(() => {});
+    const resp = await requestUrl({ url: `${this.baseUrl}/sessions/${id}`, method: 'DELETE' });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to delete session: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
+  }
+
+  async stopSession(id: string): Promise<void> {
+    const resp = await requestUrl({
+      url: `${this.baseUrl}/sessions/${id}/stop`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (resp.status >= 400) {
+      throw new Error(`Failed to stop session: ${resp.json?.message || `HTTP ${resp.status}`}`);
+    }
   }
 
   async getSession(id: string): Promise<RunnerSessionDetail> {
@@ -102,7 +119,7 @@ export class RunnerClient extends EventEmitter {
     return resp.json;
   }
 
-  async getTranscript(id: string): Promise<any[]> {
+  async getTranscript(id: string): Promise<RunnerTranscriptEvent[]> {
     const resp = await requestUrl({
       url: `${this.baseUrl}/sessions/${id}/transcript?format=json`,
       method: 'GET',
@@ -110,7 +127,7 @@ export class RunnerClient extends EventEmitter {
     if (resp.status >= 400) {
       throw new Error(`Failed to get transcript: ${resp.json?.message || `HTTP ${resp.status}`}`);
     }
-    return resp.json?.events ?? [];
+    return (resp.json?.events ?? []) as RunnerTranscriptEvent[];
   }
 
   async suggestFolder(
@@ -162,33 +179,37 @@ export class RunnerClient extends EventEmitter {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
+      this.intentionalDisconnect = false;
+
       try {
         this.ws = new WebSocket(this.wsUrl);
       } catch (err) {
         reject(new Error(`Failed to connect to runner: ${err}`));
         return;
       }
+      const socket = this.ws;
 
       const onOpen = () => {
         log.info('connected', { url: this.wsUrl });
-        this.ws!.removeEventListener('error', onError);
+        socket.removeEventListener('error', onError);
         this.pingInterval = setInterval(() => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'ping' }));
+          if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ping' }));
           }
         }, 30000);
+        this.emit('connected');
         resolve();
       };
 
       const onError = () => {
-        this.ws!.removeEventListener('open', onOpen);
+        socket.removeEventListener('open', onOpen);
         reject(new Error('WebSocket connection failed'));
       };
 
-      this.ws.addEventListener('open', onOpen, { once: true });
-      this.ws.addEventListener('error', onError, { once: true });
+      socket.addEventListener('open', onOpen, { once: true });
+      socket.addEventListener('error', onError, { once: true });
 
-      this.ws.addEventListener('message', (event: MessageEvent) => {
+      socket.addEventListener('message', (event: MessageEvent) => {
         try {
           this.handleFrame(JSON.parse(event.data));
         } catch {
@@ -196,21 +217,29 @@ export class RunnerClient extends EventEmitter {
         }
       });
 
-      this.ws.addEventListener('close', () => {
-        log.info('disconnected');
-        this.cleanupWs();
+      socket.addEventListener('close', () => {
+        const shouldReconnect = !this.intentionalDisconnect;
+        log.info('disconnected', { intentional: this.intentionalDisconnect });
+        this.clearSocketState(socket);
         this.emit('disconnected');
-        this.scheduleReconnect();
+        if (shouldReconnect) {
+          this.scheduleReconnect();
+        }
       });
     });
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.cleanupWs();
+    const ws = this.ws;
+    this.clearSocketState(ws);
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      ws.close();
+    }
   }
 
   isConnected(): boolean {
@@ -373,9 +402,11 @@ export class RunnerClient extends EventEmitter {
     return `r${++this.requestCounter}`;
   }
 
-  private cleanupWs(): void {
+  private clearSocketState(socket?: WebSocket | null): void {
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
-    if (this.ws) { this.ws.close(); this.ws = null; }
+    if (!socket || this.ws === socket) {
+      this.ws = null;
+    }
   }
 
   private scheduleReconnect(): void {

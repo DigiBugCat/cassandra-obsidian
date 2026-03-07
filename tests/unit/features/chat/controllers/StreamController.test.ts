@@ -87,25 +87,40 @@ function makeController(
 
 describe('StreamController', () => {
   describe('handleStreamEvent — text event', () => {
-    it('calls renderer.renderContent with accumulated text', async () => {
+    it('buffers text and renders via drip timer', async () => {
+      jest.useFakeTimers();
       const { controller, state, renderer } = makeController();
       const msg = makeMessage();
 
       await controller.handleStreamEvent({ type: 'text', content: 'hello' }, msg);
 
+      // Text is in the drip buffer, not yet rendered
+      expect(state.textDripBuffer).toBe('hello');
+      expect(renderer.renderContent).not.toHaveBeenCalled();
+
+      // Advance timer to trigger drip
+      jest.advanceTimersByTime(35);
       expect(renderer.renderContent).toHaveBeenCalled();
-      expect(state.currentTextContent).toBe('hello');
+
+      jest.useRealTimers();
     });
 
-    it('accumulates content across multiple text events', async () => {
-      const { controller, state, renderer } = makeController();
+    it('accumulates content across multiple text events in drip buffer', async () => {
+      jest.useFakeTimers();
+      const { controller, state } = makeController();
       const msg = makeMessage();
 
       await controller.handleStreamEvent({ type: 'text', content: 'foo' }, msg);
       await controller.handleStreamEvent({ type: 'text', content: ' bar' }, msg);
 
-      expect(state.currentTextContent).toBe('foo bar');
-      expect(renderer.renderContent).toHaveBeenCalledTimes(2);
+      expect(state.textDripBuffer).toBe('foo bar');
+
+      // Flush via finalize
+      controller.finalizeCurrentTextBlock(msg);
+      expect(state.currentTextContent).toBe('');
+      expect(msg.contentBlocks?.find(b => b.type === 'text')?.content).toBe('foo bar');
+
+      jest.useRealTimers();
     });
 
     it('updates msg.content with the chunk content', async () => {
@@ -526,6 +541,8 @@ describe('StreamController', () => {
       await controller.handleStreamEvent({ type: 'text', content: 'content here' }, msg);
       controller.finalizeCurrentTextBlock(msg);
 
+      // addTextCopyButton is called asynchronously after renderContent resolves
+      await Promise.resolve();
       expect(renderer.addTextCopyButton).toHaveBeenCalled();
     });
 

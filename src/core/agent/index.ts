@@ -4,6 +4,9 @@ export type {
   AgentService,
   ApprovalCallback,
   AskUserQuestionCallback,
+  ChatAgentService,
+  ChatSlashCommand,
+  ConversationSessionCapability,
   EnsureReadyOptions,
   QueryOptions,
 } from './types';

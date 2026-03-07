@@ -31,6 +31,8 @@ export interface ThreadsViewDeps {
   forkConversation: (conversationId: string) => Promise<void>;
   /** Compact & forks the given conversation. */
   compactAndForkConversation: (conversationId: string) => Promise<void>;
+  /** Deletes the given conversation and its remote session. */
+  deleteConversation: (conversationId: string) => Promise<void>;
   /** Creates a new unsorted conversation and opens it. */
   createConversationUnsorted: () => Promise<void>;
   /** Creates a new conversation in a folder and opens it. */
@@ -92,6 +94,11 @@ export class ThreadsView extends ItemView {
         onCompactAndForkConversation: async (conversationId) => {
           await this.deps.activateMainView();
           await this.deps.compactAndForkConversation(conversationId);
+        },
+        onDeleteConversation: async (conversationId) => {
+          await this.deps.activateMainView();
+          await this.deps.deleteConversation(conversationId);
+          await this.refresh();
         },
         onCreateThreadUnsorted: async () => {
           await this.deps.activateMainView();

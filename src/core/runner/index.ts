@@ -11,6 +11,7 @@ export type {
   RunnerSessionInfo,
   RunnerSessionRequest,
   RunnerSlashCommand,
+  RunnerTranscriptEvent,
   ServerFrame,
   UserContentBlock,
 } from './types';
