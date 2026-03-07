@@ -22,11 +22,11 @@
 
 .cassandra-tab-bar {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 8px 0;
+  align-items: stretch;
+  gap: 1px;
+  padding: 6px 8px 0;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -39,28 +39,28 @@
 .cassandra-tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: 4px 4px 0 0;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
   font-size: 12px;
   color: var(--text-muted);
   background: transparent;
   transition: background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
-  max-width: 160px;
+  max-width: 180px;
   flex-shrink: 0;
-  border-bottom: 2px solid transparent;
+  position: relative;
 }
 
 .cassandra-tab:hover {
-  background: var(--background-modifier-hover);
+  background: color-mix(in srgb, var(--background-primary) 50%, transparent);
   color: var(--text-normal);
 }
 
 .cassandra-tab.is-active {
   color: var(--text-normal);
-  border-bottom-color: var(--interactive-accent);
+  background: var(--background-primary);
 }
 
 .cassandra-tab-label {
@@ -102,9 +102,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 28px;
+  min-height: 28px;
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
   color: var(--text-faint);
   transition: color 0.15s ease, background 0.15s ease;
@@ -113,7 +113,7 @@
 
 .cassandra-tab-new:hover {
   color: var(--text-normal);
-  background: var(--background-modifier-hover);
+  background: color-mix(in srgb, var(--background-primary) 50%, transparent);
 }
 
 .cassandra-tab-new svg {
