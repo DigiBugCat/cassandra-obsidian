@@ -81,6 +81,7 @@ export class ChatSession {
   private statusEl: HTMLElement;
   private retryBtn: HTMLElement;
   private historyDropdownEl: HTMLElement;
+  private titleEl: HTMLElement;
   private processingTimerInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: ChatSessionDeps) {
@@ -100,7 +101,7 @@ export class ChatSession {
 
     // Title slot (left)
     const titleSlot = header.createEl('div', { cls: 'cassandra-title-slot' });
-    titleSlot.createEl('span', { cls: 'cassandra-logo', text: 'Cassandra' });
+    this.titleEl = titleSlot.createEl('span', { cls: 'cassandra-logo', text: 'Cassandra' });
 
     // Processing indicator (center, hidden initially)
     this.processingIndicatorEl = header.createEl('div', { cls: 'cassandra-processing-indicator' });
@@ -393,6 +394,8 @@ export class ChatSession {
 
   private setConversationTitle(title: string): void {
     this.conversationTitle = title;
+    this.titleEl.textContent = title === 'New conversation' ? 'Cassandra' : title;
+    this.titleEl.setAttribute('title', title);
     this.deps.onTitleChanged?.(title);
   }
 
