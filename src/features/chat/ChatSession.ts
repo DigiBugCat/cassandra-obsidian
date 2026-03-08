@@ -10,6 +10,7 @@ import { Notice, setIcon } from 'obsidian';
 
 import type { AgentConfig, AgentService, ChatAgentService } from '../../core/agent';
 import { createLogger } from '../../core/logging';
+import type { RunnerClient } from '../../core/runner';
 import { RunnerService } from '../../core/runner';
 import type { SessionMetadata, SessionStorage } from '../../core/storage';
 import type {
@@ -39,6 +40,7 @@ const log = createLogger('ChatSession');
 
 export interface ChatSessionDeps {
   config: AgentConfig;
+  client: RunnerClient;
   app: App;
   component: Component;
   containerEl: HTMLElement;
@@ -175,13 +177,23 @@ export class ChatSession {
     this.toolbar = new ComposerToolbar(composer, {
       onModelChange: (model) => this.handleModelChange(model),
       onThinkingChange: (budget) => this.handleThinkingChange(budget),
+      onContextToggle: () => {
+        this.fileManager.toggleContext();
+        this.updateContextToggle();
+      },
     }, {
       model: settings.model,
       thinkingBudget: settings.thinkingBudget,
       isStreaming: false,
       isReady: false,
       usage: null,
+      contextEnabled: this.fileManager.contextEnabled,
+      contextSummary: this.fileManager.getContextSummary(),
+      hasAutoContext: this.fileManager.hasAutoContext(),
     });
+
+    // Update toolbar when context state changes (note/selection changes)
+    this.fileManager.setOnContextStateChanged(() => this.updateContextToggle());
 
     // State with callbacks
     this.state = new ChatState({
@@ -811,6 +823,14 @@ export class ChatSession {
     this.saveSessionMetadata();
   }
 
+  private updateContextToggle(): void {
+    this.toolbar.update({
+      contextEnabled: this.fileManager.contextEnabled,
+      contextSummary: this.fileManager.getContextSummary(),
+      hasAutoContext: this.fileManager.hasAutoContext(),
+    });
+  }
+
   private handleThinkingChange(budget: ThinkingBudget): void {
     this.config.settings.thinkingBudget = budget;
     this.service?.updateConfig(this.config);
@@ -853,7 +873,7 @@ export class ChatSession {
   // ── Service init ───────────────────────────────────────────────
 
   private async initService(): Promise<void> {
-    this.service = new RunnerService(this.config);
+    this.service = new RunnerService(this.config, this.deps.client);
 
     // Wire approval callback
     this.service.setApprovalCallback(async (toolName, input, summary) => {

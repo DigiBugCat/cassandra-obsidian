@@ -11,7 +11,7 @@ import type { ThreadOrganizerService } from './ThreadOrganizerService';
 const log = createLogger('ThreadSortService');
 
 export interface ThreadSortDeps {
-  getRunnerClient: () => RunnerClient;
+  client: RunnerClient;
   storage: SessionStorage;
   organizer: ThreadOrganizerService;
   getConversationList: () => ConversationMeta[];
@@ -45,8 +45,7 @@ export class ThreadSortService {
     const folderNames = folders.map(f => f.name);
 
     try {
-      const client = this.deps.getRunnerClient();
-      const result = await client.suggestFolder(meta.runnerSessionId, title, preview, folderNames);
+      const result = await this.deps.client.suggestFolder(meta.runnerSessionId, title, preview, folderNames);
 
       log.info('sort_result', { conversationId, type: result.type, folderName: result.folderName });
 

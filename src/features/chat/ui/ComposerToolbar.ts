@@ -15,6 +15,7 @@ import { DEFAULT_CLAUDE_MODELS } from '../../../core/types';
 export interface ComposerToolbarCallbacks {
   onModelChange: (model: string) => void;
   onThinkingChange: (budget: ThinkingBudget) => void;
+  onContextToggle?: () => void;
 }
 
 export interface ComposerToolbarState {
@@ -23,6 +24,9 @@ export interface ComposerToolbarState {
   isStreaming: boolean;
   isReady: boolean;
   usage: UsageInfo | null;
+  contextEnabled?: boolean;
+  contextSummary?: string | null;
+  hasAutoContext?: boolean;
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -36,6 +40,8 @@ export class ComposerToolbar {
   private modelBtn: HTMLElement;
   private modelDropdown: HTMLElement;
   private thinkingToggle: HTMLElement;
+  private contextToggle: HTMLElement;
+  private contextLabel: HTMLElement;
   private tokenContainer: HTMLElement;
   private tokenContext: HTMLElement;
   private tokenOutput: HTMLElement;
@@ -68,6 +74,12 @@ export class ComposerToolbar {
       callbacks.onThinkingChange(next);
     });
 
+    // ── Context toggle (current note + selection) ──
+    const contextContainer = this.el.createEl('div', { cls: 'cassandra-context-toggle' });
+    this.contextToggle = contextContainer.createEl('div', { cls: 'cassandra-context-toggle-icon' });
+    this.contextLabel = contextContainer.createEl('span', { cls: 'cassandra-context-toggle-label' });
+    contextContainer.addEventListener('click', () => callbacks.onContextToggle?.());
+
     // ── Token count ──
     this.tokenContainer = this.el.createEl('div', { cls: 'cassandra-token-count' });
     this.tokenContext = this.tokenContainer.createEl('span', { cls: 'cassandra-token-context' });
@@ -99,6 +111,7 @@ export class ComposerToolbar {
   private render(): void {
     this.renderModelSelector();
     this.renderThinkingToggle();
+    this.renderContextToggle();
     this.renderTokenCount();
     this.modelBtn.toggleClass('ready', this.state.isReady);
   }
@@ -134,6 +147,30 @@ export class ComposerToolbar {
     setIcon(this.thinkingToggle, 'brain');
     this.thinkingToggle.toggleClass('is-active', isOn);
     this.thinkingToggle.setAttribute('title', isOn ? 'Thinking: On (click to disable)' : 'Thinking: Off (click to enable)');
+  }
+
+  private renderContextToggle(): void {
+    const enabled = this.state.contextEnabled !== false;
+    const summary = this.state.contextSummary;
+    const hasContext = this.state.hasAutoContext;
+    const container = this.contextToggle.parentElement!;
+
+    this.contextToggle.empty();
+    setIcon(this.contextToggle, 'file-symlink');
+    container.toggleClass('is-active', enabled && !!hasContext);
+    container.toggleClass('is-disabled', !enabled);
+
+    if (enabled && summary) {
+      this.contextLabel.textContent = summary;
+      this.contextLabel.style.display = '';
+    } else {
+      this.contextLabel.style.display = 'none';
+    }
+
+    const tooltip = enabled
+      ? (summary ? `Context: ${summary} (click to disable)` : 'Context: No active note (click to disable)')
+      : 'Context: Off (click to enable)';
+    container.setAttribute('title', tooltip);
   }
 
   private renderTokenCount(): void {

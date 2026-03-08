@@ -15,6 +15,7 @@ export const VIEW_TYPE_CASSANDRA = 'cassandra-view';
 
 export class CassandraView extends ItemView {
   private config: AgentConfig;
+  private client: RunnerClient;
   private saveSettings?: (settings: CassandraSettings) => Promise<void>;
   private sessionStorage?: SessionStorage;
   private deleteConversationCallback?: (conversationId: string) => Promise<void>;
@@ -25,12 +26,14 @@ export class CassandraView extends ItemView {
   constructor(
     leaf: WorkspaceLeaf,
     config: AgentConfig,
+    client: RunnerClient,
     saveSettings?: (settings: CassandraSettings) => Promise<void>,
     sessionStorage?: SessionStorage,
     deleteConversation?: (conversationId: string) => Promise<void>,
   ) {
     super(leaf);
     this.config = config;
+    this.client = client;
     this.saveSettings = saveSettings;
     this.sessionStorage = sessionStorage;
     this.deleteConversationCallback = deleteConversation;
@@ -68,6 +71,7 @@ export class CassandraView extends ItemView {
     // Tab manager
     this.tabManager = new TabManager({
       config: this.config,
+      client: this.client,
       app: this.app,
       component: this,
       contentEl,
@@ -129,8 +133,7 @@ export class CassandraView extends ItemView {
 
     try {
       // Fork the runner session via the orchestrator
-      const client = new RunnerClient(this.config.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.config.settings.apiKey || undefined);
-      const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
+      const forkResult = await this.client.forkSession(sessionMeta.runnerSessionId, {});
 
       // Create a new tab
       const tab = this.tabManager?.createTab();
@@ -160,11 +163,10 @@ export class CassandraView extends ItemView {
     }
 
     try {
-      const client = new RunnerClient(this.config.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com', this.config.settings.apiKey || undefined);
-      const forkResult = await client.forkSession(sessionMeta.runnerSessionId, {});
+      const forkResult = await this.client.forkSession(sessionMeta.runnerSessionId, {});
 
       // Schedule compaction on the forked session (runs on next query)
-      await client.compactSession(
+      await this.client.compactSession(
         forkResult.session_id,
         this.config.settings.compactInstructions || undefined,
       );

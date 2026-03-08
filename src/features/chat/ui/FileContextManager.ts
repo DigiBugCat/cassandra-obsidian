@@ -59,8 +59,14 @@ export class FileContextManager {
   private externalTextFiles: Map<string, ExternalTextFile> = new Map();
   private externalDocuments: Map<string, ExternalDocumentFile> = new Map();
   private callbacks: FileContextCallbacks;
+  private inputEl: HTMLTextAreaElement;
   private currentNotePath: string | null = null;
   private currentNoteSent = false;
+  private selectionText: string | null = null;
+  private selectionLineCount = 0;
+  private selectionPollInterval: ReturnType<typeof setInterval> | null = null;
+  private _contextEnabled = true;
+  private onContextStateChanged: (() => void) | null = null;
 
   constructor(
     app: App,
@@ -74,6 +80,8 @@ export class FileContextManager {
     this.callbacks = callbacks;
     this.chipContainer = contextRowEl.createEl('div', { cls: 'cassandra-file-chips' });
 
+    this.inputEl = inputEl;
+
     this.mentionDropdown = new MentionDropdown(app, inputEl, composerEl, {
       onSelect: (filePath) => this.addFile(filePath),
     });
@@ -81,6 +89,42 @@ export class FileContextManager {
     // Track active file
     this.updateCurrentNote();
     this.app.workspace.on('active-leaf-change', () => this.updateCurrentNote());
+
+    // Poll for selection changes (Obsidian has no selection-change event)
+    this.selectionPollInterval = setInterval(() => this.pollSelection(), 250);
+  }
+
+  /** Whether auto-context (current note + selection) is enabled. */
+  get contextEnabled(): boolean { return this._contextEnabled; }
+
+  toggleContext(): void {
+    this._contextEnabled = !this._contextEnabled;
+    this.onContextStateChanged?.();
+  }
+
+  /** Register a callback for when context state changes (toggle, note change, selection change). */
+  setOnContextStateChanged(cb: () => void): void {
+    this.onContextStateChanged = cb;
+  }
+
+  /** Get a summary string for the toolbar tooltip. */
+  getContextSummary(): string | null {
+    if (!this._contextEnabled) return null;
+    const parts: string[] = [];
+    if (this.currentNotePath) {
+      const name = this.currentNotePath.split('/').pop()?.replace(/\.md$/, '') ?? this.currentNotePath;
+      parts.push(name);
+    }
+    if (this.selectionText) {
+      const lineWord = this.selectionLineCount === 1 ? 'line' : 'lines';
+      parts.push(`${this.selectionLineCount} ${lineWord} selected`);
+    }
+    return parts.length > 0 ? parts.join(' + ') : null;
+  }
+
+  /** Whether there's any auto-context available (note or selection). */
+  hasAutoContext(): boolean {
+    return !!this.currentNotePath || !!this.selectionText;
   }
 
   /** Add a vault file by path (from @-mention or Obsidian internal drag). */
@@ -210,16 +254,17 @@ export class FileContextManager {
   getContextXml(): string {
     const parts: string[] = [];
 
-    // Current note context (only on first message of session)
-    if (this.currentNotePath && !this.currentNoteSent) {
-      parts.push(`<current_note>\n${this.currentNotePath}\n</current_note>`);
-      this.currentNoteSent = true;
-    }
+    // Auto-context (current note + selection) — only when enabled
+    if (this._contextEnabled) {
+      if (this.currentNotePath && !this.currentNoteSent) {
+        parts.push(`<current_note>\n${this.currentNotePath}\n</current_note>`);
+        this.currentNoteSent = true;
+      }
 
-    // Selected text from active editor
-    const selection = this.getEditorSelection();
-    if (selection) {
-      parts.push(`<selected_text file="${selection.filePath}">\n${selection.text}\n</selected_text>`);
+      const selection = this.getEditorSelection();
+      if (selection) {
+        parts.push(`<selected_text file="${selection.filePath}">\n${selection.text}\n</selected_text>`);
+      }
     }
 
     // Attached vault file mentions (runner reads these via tools)
@@ -262,6 +307,28 @@ export class FileContextManager {
   private updateCurrentNote(): void {
     const file = this.app.workspace.getActiveFile();
     this.currentNotePath = file ? file.path : null;
+    this.onContextStateChanged?.();
+  }
+
+  private pollSelection(): void {
+    const sel = this.getEditorSelection();
+
+    if (sel?.text.trim()) {
+      const lineCount = sel.text.split(/\r?\n/).length;
+      if (sel.text !== this.selectionText) {
+        this.selectionText = sel.text;
+        this.selectionLineCount = lineCount;
+        this.onContextStateChanged?.();
+      }
+    } else if (document.activeElement !== this.inputEl) {
+      // No selection AND chat input not focused — user cleared selection in editor
+      if (this.selectionText !== null) {
+        this.selectionText = null;
+        this.selectionLineCount = 0;
+        this.onContextStateChanged?.();
+      }
+    }
+    // If no selection but input IS focused, keep stored selection (user clicked input to type)
   }
 
   private getEditorSelection(): { text: string; filePath: string } | null {
@@ -291,11 +358,6 @@ export class FileContextManager {
     }
     for (const doc of this.externalDocuments.values()) {
       allChips.push({ key: doc.name, displayName: doc.name, badge: 'doc' });
-    }
-
-    if (allChips.length === 0) {
-      this.updateContextRowVisibility();
-      return;
     }
 
     for (const { key, displayName, badge } of allChips) {
@@ -351,6 +413,10 @@ export class FileContextManager {
 
   destroy(): void {
     this.mentionDropdown.destroy();
+    if (this.selectionPollInterval) {
+      clearInterval(this.selectionPollInterval);
+      this.selectionPollInterval = null;
+    }
     this.attachedFiles.clear();
     this.externalTextFiles.clear();
     this.externalDocuments.clear();

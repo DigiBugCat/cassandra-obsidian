@@ -273,6 +273,56 @@
   height: 14px;
 }
 
+/* ── Context toggle ──────────────────────────────────────────── */
+
+.cassandra-context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  transition: color 0.2s ease;
+}
+
+.cassandra-context-toggle:hover {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+
+.cassandra-context-toggle.is-active {
+  color: var(--interactive-accent);
+}
+
+.cassandra-context-toggle.is-active:hover {
+  color: var(--interactive-accent);
+}
+
+.cassandra-context-toggle.is-disabled {
+  opacity: 0.5;
+}
+
+.cassandra-context-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cassandra-context-toggle-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cassandra-context-toggle-label {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
 /* ── Token count ─────────────────────────────────────────────── */
 
 .cassandra-token-count {
@@ -613,6 +663,7 @@
 /* ── Mobile touch targets ───────────────────────────────────── */
 
 .is-mobile .cassandra-thinking-toggle,
+.is-mobile .cassandra-context-toggle,
 .is-mobile .cassandra-refresh-session-icon,
 .is-mobile .cassandra-vault-restriction-icon,
 .is-mobile .cassandra-toggle-switch {

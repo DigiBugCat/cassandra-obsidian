@@ -289,6 +289,43 @@ export class RunnerClient extends EventEmitter {
     }
   }
 
+  reconfigure(baseUrl: string, apiKey?: string): void {
+    const nextBaseUrl = baseUrl.replace(/\/$/, '');
+    const nextWsUrl = nextBaseUrl.replace(/^http/, 'ws') + '/ws';
+    const nextApiKey = apiKey || null;
+    if (this.baseUrl === nextBaseUrl && this.apiKey === nextApiKey) {
+      return;
+    }
+
+    const currentSocket = this.ws;
+    const shouldReconnect = this.activeSubscriptions.size > 0;
+    const waitForClose = currentSocket && (
+      currentSocket.readyState === WebSocket.OPEN ||
+      currentSocket.readyState === WebSocket.CONNECTING
+    )
+      ? new Promise<void>((resolve) => {
+        currentSocket.addEventListener('close', () => resolve(), { once: true });
+      })
+      : Promise.resolve();
+
+    this.baseUrl = nextBaseUrl;
+    this.wsUrl = nextWsUrl;
+    this.apiKey = nextApiKey;
+
+    this.disconnect();
+
+    if (!shouldReconnect) {
+      return;
+    }
+
+    waitForClose.then(() => this.connectAndResubscribe()).catch((err) => {
+      log.warn('reconfigure_reconnect_failed', { error: String(err) });
+      if (!this.intentionalDisconnect) {
+        this.scheduleReconnect();
+      }
+    });
+  }
+
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
@@ -460,6 +497,13 @@ export class RunnerClient extends EventEmitter {
     }
   }
 
+  private async connectAndResubscribe(): Promise<void> {
+    await this.connect();
+    for (const sessionId of this.activeSubscriptions) {
+      this.sendFrame({ type: 'subscribe', session_id: sessionId, request_id: this.nextRequestId() });
+    }
+  }
+
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
     this.reconnectAttempts++;
@@ -470,11 +514,13 @@ export class RunnerClient extends EventEmitter {
     log.info('scheduling_reconnect', { attempt: this.reconnectAttempts, delay_ms: delay });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect().then(() => {
-        for (const sessionId of this.activeSubscriptions) {
-          this.sendFrame({ type: 'subscribe', session_id: sessionId, request_id: this.nextRequestId() });
+      if (this.intentionalDisconnect) return;
+      this.connectAndResubscribe().catch((err) => {
+        log.warn('reconnect_failed', { attempt: this.reconnectAttempts, error: String(err) });
+        if (!this.intentionalDisconnect) {
+          this.scheduleReconnect();
         }
-      }).catch((err) => log.warn('reconnect_failed', { attempt: this.reconnectAttempts, error: String(err) }));
+      });
     }, delay);
   }
 }

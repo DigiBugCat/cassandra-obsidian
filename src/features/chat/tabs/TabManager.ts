@@ -8,6 +8,7 @@
 import type { App, Component } from 'obsidian';
 
 import type { AgentConfig } from '../../../core/agent';
+import type { RunnerClient } from '../../../core/runner';
 import type { SessionStorage } from '../../../core/storage';
 import type { CassandraSettings } from '../../../core/types';
 import { ChatSession } from '../ChatSession';
@@ -21,6 +22,7 @@ export interface Tab {
 
 export interface TabManagerDeps {
   config: AgentConfig;
+  client: RunnerClient;
   app: App;
   component: Component;
   contentEl: HTMLElement;
@@ -62,6 +64,7 @@ export class TabManager {
     // Create ChatSession in this container
     const session = new ChatSession({
       config: this.deps.config,
+      client: this.deps.client,
       app: this.deps.app,
       component: this.deps.component,
       containerEl,
