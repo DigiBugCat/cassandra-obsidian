@@ -1,5 +1,7 @@
 # Cassandra — Obsidian AI Chat
 
+> **Disclaimer:** This project is experimental and under active development. It requires a running [Claude Agent Runner](https://github.com/DigiBugCat/claude-agent-runner) backend. Use at your own risk — no stability guarantees.
+
 An Obsidian plugin that provides an AI chat interface powered by a [Claude Agent Runner](https://github.com/DigiBugCat/claude-agent-runner) backend. Runner-first, mobile-ready architecture — the vault directory becomes Claude's working directory.
 
 ## Features
