@@ -13,7 +13,8 @@ npm run deploy     # Build + deploy to Obsidian vault
 npm run typecheck  # Type check
 npm run lint       # Lint code
 npm run lint:fix   # Lint and auto-fix
-npm run test       # Run tests
+npm run test       # Run unit tests
+npm run test:integration # Run integration tests
 npm run test:watch # Run tests in watch mode
 ```
 

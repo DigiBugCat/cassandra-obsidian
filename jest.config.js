@@ -25,7 +25,9 @@ module.exports = {
     {
       ...baseConfig,
       displayName: 'integration',
+      testEnvironment: 'jsdom',
       testMatch: ['<rootDir>/tests/integration/**/*.test.ts'],
+      setupFiles: ['<rootDir>/tests/setup/dom-polyfills.ts'],
     },
   ],
   collectCoverageFrom: [

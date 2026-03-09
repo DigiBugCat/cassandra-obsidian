@@ -1,10 +1,9 @@
 import type { WorkspaceLeaf } from 'obsidian';
-import { ItemView } from 'obsidian';
-import { Notice } from 'obsidian';
+import { ItemView, Notice } from 'obsidian';
 
 import type { AgentConfig } from '../../core/agent';
 import { createLogger } from '../../core/logging';
-import { RunnerClient } from '../../core/runner';
+import type { RunnerClient } from '../../core/runner';
 import type { SessionStorage } from '../../core/storage';
 import type { CassandraSettings } from '../../core/types';
 import { TabBar, TabManager } from './tabs';

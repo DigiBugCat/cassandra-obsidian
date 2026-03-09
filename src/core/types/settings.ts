@@ -45,7 +45,7 @@ export interface CassandraSettings {
 }
 
 export const DEFAULT_SETTINGS: CassandraSettings = {
-  runnerUrl: 'https://claude-runner.cassandrasedge.com',
+  runnerUrl: '',
   runnerProjectPath: '',
   runnerVaultName: '',
   agentName: 'cassandra',

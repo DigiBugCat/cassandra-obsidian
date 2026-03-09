@@ -30,7 +30,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
       .setDesc('WebSocket/HTTP URL for the claude-agent-runner')
       .addText((text) =>
         text
-          .setPlaceholder('https://claude-runner.cassandrasedge.com')
+          .setPlaceholder('https://your-runner-url.example.com')
           .setValue(this.plugin.settings.runnerUrl)
           .onChange(async (value) => {
             this.plugin.settings.runnerUrl = value;
@@ -79,7 +79,7 @@ export class CassandraSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('API Key')
-      .setDesc('Runner API key for authentication (create at portal.cassandrasedge.com)')
+      .setDesc('Runner API key for authentication (create at your portal)')
       .addText((text) =>
         text
           .setPlaceholder('')

@@ -92,7 +92,7 @@ export class RunnerService implements ChatAgentService {
       this.ownsClient = false;
     } else {
       this.client = new RunnerClient(
-        config.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com',
+        config.settings.runnerUrl,
         config.settings.apiKey || undefined,
       );
       this.ownsClient = true;

@@ -27,7 +27,7 @@ export default class CassandraPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
     this.client = new RunnerClient(
-      this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com',
+      this.settings.runnerUrl,
       this.settings.apiKey || undefined,
     );
 
@@ -211,7 +211,7 @@ export default class CassandraPlugin extends Plugin {
     await this.saveData(this.settings);
     if (this.client) {
       this.client.reconfigure(
-        this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com',
+        this.settings.runnerUrl,
         this.settings.apiKey || undefined,
       );
     }
@@ -221,7 +221,7 @@ export default class CassandraPlugin extends Plugin {
     Object.assign(this.settings, updated);
     await this.saveData(this.settings);
     this.client.reconfigure(
-      this.settings.runnerUrl || 'https://claude-runner.cassandrasedge.com',
+      this.settings.runnerUrl,
       this.settings.apiKey || undefined,
     );
   }

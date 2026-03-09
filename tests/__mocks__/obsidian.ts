@@ -10,10 +10,12 @@ export class Plugin {
         adapter: { basePath: '/mock/vault' },
         getAbstractFileByPath: () => null,
         getFiles: () => [],
+        getName: () => 'Mock Vault',
       },
       workspace: {
         getLeavesOfType: () => [],
         getRightLeaf: () => null,
+        getLeftLeaf: () => null,
         revealLeaf: () => {},
         on: () => ({ id: 'mock' }),
         off: () => {},
@@ -57,6 +59,20 @@ export class WorkspaceLeaf {
 
 export class Notice {
   constructor(_message: string, _timeout?: number) {}
+}
+
+export class Menu {
+  addItem(callback: (item: any) => void) {
+    const item = {
+      setTitle: () => item,
+      setIcon: () => item,
+      onClick: () => item,
+    };
+    callback(item);
+    return this;
+  }
+
+  showAtMouseEvent() {}
 }
 
 export class Modal {

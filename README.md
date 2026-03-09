@@ -44,7 +44,8 @@ npm run dev        # Watch mode
 npm run build      # Production build
 npm run typecheck  # Type check
 npm run lint       # Lint
-npm run test       # Run tests
+npm run test       # Run unit tests
+npm run test:integration # Run integration tests
 ```
 
 ## Architecture
