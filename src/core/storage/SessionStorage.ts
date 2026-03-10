@@ -1,11 +1,12 @@
 /**
- * SessionStorage — persists conversation metadata to vault/.cassandra/sessions/.
+ * SessionStorage — persists conversation metadata and messages to vault/.cassandra/sessions/.
  *
- * Runner-first approach: the runner keeps conversation messages.
- * We only store metadata (.meta.json) to enable session resume and history.
+ * Each conversation has two files:
+ *   <id>.meta.json     — lightweight metadata for history listing
+ *   <id>.messages.json  — full message array for offline restore
  */
 
-import type { ConversationMeta, UsageInfo } from '../types';
+import type { ChatMessage, ConversationMeta, UsageInfo } from '../types';
 import type { VaultFileAdapter } from './VaultFileAdapter';
 
 export const SESSIONS_PATH = '.cassandra/sessions';
@@ -48,8 +49,31 @@ export class SessionStorage {
   }
 
   async delete(id: string): Promise<void> {
-    const filePath = `${SESSIONS_PATH}/${id}.meta.json`;
-    await this.adapter.delete(filePath);
+    await this.adapter.delete(`${SESSIONS_PATH}/${id}.meta.json`);
+    await this.adapter.delete(`${SESSIONS_PATH}/${id}.messages.json`);
+  }
+
+  async saveMessages(id: string, messages: ChatMessage[]): Promise<void> {
+    // Strip base64 image data to keep files small
+    const lightweight = messages.map(m => {
+      if (!m.images?.length) return m;
+      return { ...m, images: m.images.map(img => ({ ...img, data: '' })) };
+    });
+    await this.adapter.write(
+      `${SESSIONS_PATH}/${id}.messages.json`,
+      JSON.stringify(lightweight),
+    );
+  }
+
+  async loadMessages(id: string): Promise<ChatMessage[]> {
+    const filePath = `${SESSIONS_PATH}/${id}.messages.json`;
+    try {
+      if (!(await this.adapter.exists(filePath))) return [];
+      const content = await this.adapter.read(filePath);
+      return JSON.parse(content) as ChatMessage[];
+    } catch {
+      return [];
+    }
   }
 
   async updateMeta(id: string, partial: Partial<SessionMetadata>): Promise<void> {

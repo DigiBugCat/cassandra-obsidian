@@ -200,6 +200,7 @@ export class ChatSession {
       onStreamingStateChanged: (isStreaming) => {
         this.updateProcessingIndicator(isStreaming);
         this.toolbar.update({ isStreaming });
+        if (!isStreaming) this.persistMessages();
       },
       onUsageChanged: (usage) => {
         if (!this.state.isStreaming) {
@@ -524,8 +525,8 @@ export class ChatSession {
     const storage = this.deps.sessionStorage;
     if (!storage) return;
     const sessionMeta = await storage.load(meta.id);
-    if (!sessionMeta || !sessionMeta.runnerSessionId) {
-      log.warn('restore_failed', { id: meta.id, reason: 'no runner session id' });
+    if (!sessionMeta) {
+      log.warn('restore_failed', { id: meta.id, reason: 'no metadata' });
       return;
     }
 
@@ -551,19 +552,36 @@ export class ChatSession {
       this.toolbar.update({ model: sessionMeta.model });
     }
 
-    this.statusEl.textContent = 'Reconnecting...';
-    const attached = await this.service?.attachToSession(sessionMeta.runnerSessionId);
-    if (!attached) {
-      this.toolbar.update({ isReady: false });
-      this.statusEl.textContent = 'Session unavailable';
-      new Notice('Session unavailable');
-      this.inputEl.focus();
-      return;
+    // 1. Load and render local messages immediately
+    const localMessages = await storage.loadMessages(meta.id);
+    if (localMessages.length > 0) {
+      await this.renderStoredMessages(localMessages);
+      log.info('local_messages_restored', { count: localMessages.length });
     }
 
-    this.toolbar.update({ isReady: true });
-    this.statusEl.textContent = this.formatStatusText();
-    await this.loadTranscript();
+    // 2. Try to attach to the runner session
+    if (sessionMeta.runnerSessionId) {
+      this.statusEl.textContent = 'Reconnecting...';
+      const attached = await this.service?.attachToSession(sessionMeta.runnerSessionId);
+      if (attached) {
+        this.toolbar.update({ isReady: true });
+        this.statusEl.textContent = this.formatStatusText();
+        // If we had no local messages, try loading from the runner transcript
+        if (localMessages.length === 0) {
+          await this.loadTranscript();
+        }
+      } else {
+        // Runner session is gone — show messages read-only
+        this.toolbar.update({ isReady: false });
+        this.statusEl.textContent = 'Session expired';
+        log.info('restore_session_expired', { id: meta.id });
+      }
+    } else {
+      // No runner session ID — read-only view of local messages
+      this.toolbar.update({ isReady: false });
+      this.statusEl.textContent = localMessages.length > 0 ? 'Session expired' : 'Empty';
+    }
+
     this.inputEl.focus();
   }
 
@@ -590,34 +608,36 @@ export class ChatSession {
       }
 
       const messages = this.parseTranscriptEvents(events, toolResults);
-      for (const msg of messages) {
-        this.state.addMessage(msg);
-        const msgEl = this.renderer.addMessage(msg);
-
-        if (msg.role === 'assistant') {
-          const contentEl = msgEl.querySelector('.cassandra-message-content') as HTMLElement;
-          if (!contentEl) continue;
-
-          // Render tool calls
-          if (msg.toolCalls && msg.toolCalls.length > 0) {
-            const { renderStoredToolCall } = await import('./rendering');
-            for (const tc of msg.toolCalls) {
-              renderStoredToolCall(contentEl, tc);
-            }
-          }
-
-          // Render text content
-          if (msg.content) {
-            const textEl = contentEl.createDiv({ cls: 'cassandra-text-block' });
-            await this.renderer.renderContent(textEl, msg.content);
-            this.renderer.addTextCopyButton(textEl, msg.content);
-          }
-        }
-      }
-
+      await this.renderStoredMessages(messages);
       log.info('transcript_loaded', { messageCount: messages.length });
     } catch (err) {
       log.warn('transcript_load_failed', { error: String(err) });
+    }
+  }
+
+  /** Render an array of ChatMessages into the DOM (used for both transcript and local restore). */
+  private async renderStoredMessages(messages: ChatMessage[]): Promise<void> {
+    for (const msg of messages) {
+      this.state.addMessage(msg);
+      const msgEl = this.renderer.addMessage(msg);
+
+      if (msg.role === 'assistant') {
+        const contentEl = msgEl.querySelector('.cassandra-message-content') as HTMLElement;
+        if (!contentEl) continue;
+
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          const { renderStoredToolCall } = await import('./rendering');
+          for (const tc of msg.toolCalls) {
+            renderStoredToolCall(contentEl, tc);
+          }
+        }
+
+        if (msg.content) {
+          const textEl = contentEl.createDiv({ cls: 'cassandra-text-block' });
+          await this.renderer.renderContent(textEl, msg.content);
+          this.renderer.addTextCopyButton(textEl, msg.content);
+        }
+      }
     }
   }
 
@@ -820,9 +840,22 @@ export class ChatSession {
 
   // ── Session metadata persistence ─────────────────────────────
 
+  private persistMessages(): void {
+    const storage = this.deps.sessionStorage;
+    if (!storage || this.messageCount === 0) return;
+    const messages = this.state.getPersistedMessages();
+    if (messages.length === 0) return;
+    storage.saveMessages(this.conversationId, messages).catch((err) => {
+      log.warn('persist_messages_failed', { error: String(err) });
+    });
+  }
+
   private async saveSessionMetadata(): Promise<void> {
     const storage = this.deps.sessionStorage;
     if (!storage) return;
+
+    // Don't persist empty conversations — wait until first message
+    if (this.messageCount === 0 && !this.service?.getSessionId()) return;
 
     const existingMeta = await storage.load(this.conversationId);
     const meta: SessionMetadata = {
