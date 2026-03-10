@@ -464,11 +464,9 @@ export class ChatSession {
     this.fileManager.reset();
     this.slashDropdown.invalidateCache();
 
-    this.statusEl.textContent = 'Connecting...';
-    const ready = await this.service?.ensureReady();
-    this.toolbar.update({ isReady: !!ready });
-    this.statusEl.textContent = ready ? this.formatStatusText() : 'Disconnected';
-    await this.saveSessionMetadata();
+    // Don't create a runner session yet — wait for first send
+    this.statusEl.textContent = 'Ready';
+    this.toolbar.update({ isReady: true });
     this.inputEl.focus();
   }
 
@@ -930,7 +928,10 @@ export class ChatSession {
       this.saveSessionMetadata();
     });
 
-    await this.connectWithRetry();
+    // Only connect the WebSocket — don't create a runner session yet.
+    // Session is created lazily on first send (RunnerService.query calls ensureReady).
+    this.statusEl.textContent = 'Ready';
+    this.toolbar.update({ isReady: true });
   }
 
   private async connectWithRetry(maxRetries = 5): Promise<void> {
