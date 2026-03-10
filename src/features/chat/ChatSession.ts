@@ -218,6 +218,7 @@ export class ChatSession {
         getMessages: () => this.state.getPersistedMessages(),
         onRewind: (messageId) => this.handleRewind(messageId),
         onFork: (messageId) => this.handleFork(messageId),
+        onRerun: (messageId) => this.handleRerun(messageId),
       },
     );
 
@@ -757,6 +758,43 @@ export class ChatSession {
 
     log.info('rewind', { messageId, sdkUserUuid: msg.sdkUserUuid, removedCount: messages.length - msgIndex });
     await this.saveSessionMetadata();
+  }
+
+  private async handleRerun(messageId: string): Promise<void> {
+    if (this.state.isStreaming) return;
+
+    const messages = this.state.getPersistedMessages();
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    if (msgIndex < 0) return;
+
+    const msg = messages[msgIndex];
+    if (msg.role !== 'user' || !msg.sdkUserUuid) {
+      log.warn('rerun_invalid', { messageId, role: msg.role });
+      return;
+    }
+
+    const prompt = msg.content;
+    if (!prompt) return;
+
+    // Rewind to before this user message
+    const sessionId = this.service?.getSessionId();
+    if (!sessionId) return;
+
+    const truncated = messages.slice(0, msgIndex);
+    this.state.messages = truncated;
+
+    const allMsgEls = this.messagesEl.querySelectorAll('.cassandra-message');
+    for (let i = msgIndex; i < allMsgEls.length; i++) {
+      allMsgEls[i].remove();
+    }
+
+    this.service?.rewindToUserMessage(msg.sdkUserUuid);
+    log.info('rerun', { messageId, prompt: prompt.slice(0, 60) });
+
+    // Re-send the same prompt after a brief delay for the rewind to propagate
+    this.messageCount += 2;
+    await this.saveSessionMetadata();
+    setTimeout(() => this.inputController.handleSend(prompt), 200);
   }
 
   private async handleFork(messageId: string): Promise<void> {

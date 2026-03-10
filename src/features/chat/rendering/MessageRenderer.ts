@@ -12,6 +12,7 @@ export interface RenderDeps {
 export interface MessageActionCallbacks {
   onRewind?: (messageId: string) => Promise<void>;
   onFork?: (messageId: string) => Promise<void>;
+  onRerun?: (messageId: string) => Promise<void>;
   getMessages?: () => ChatMessage[];
 }
 
@@ -228,6 +229,37 @@ export class MessageRenderer {
         });
         hasItems = true;
       }
+
+      // Find the preceding user message for rerun/fork
+      const precedingUser = this.findPrecedingUserMessage(messages, msgIndex);
+
+      if (precedingUser && this.actionCallbacks.onRerun) {
+        const rerunCb = this.actionCallbacks.onRerun;
+        menu.addItem((item) => {
+          item.setTitle('Rerun');
+          item.setIcon('refresh-cw');
+          item.onClick(() => {
+            void rerunCb(precedingUser.id).catch((err: unknown) => {
+              new Notice(`Rerun failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            });
+          });
+        });
+        hasItems = true;
+      }
+
+      if (precedingUser?.sdkUserUuid && this.actionCallbacks.onFork) {
+        const forkCb = this.actionCallbacks.onFork;
+        menu.addItem((item) => {
+          item.setTitle('Fork from here');
+          item.setIcon('git-branch');
+          item.onClick(() => {
+            void forkCb(precedingUser.id).catch((err: unknown) => {
+              new Notice(`Fork failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            });
+          });
+        });
+        hasItems = true;
+      }
     }
 
     // ── User message actions ──
@@ -243,6 +275,20 @@ export class MessageRenderer {
         });
       });
       hasItems = true;
+
+      // Rerun
+      if (msg.sdkUserUuid && this.actionCallbacks.onRerun) {
+        const rerunCb = this.actionCallbacks.onRerun;
+        menu.addItem((item) => {
+          item.setTitle('Rerun');
+          item.setIcon('refresh-cw');
+          item.onClick(() => {
+            void rerunCb(messageId).catch((err: unknown) => {
+              new Notice(`Rerun failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            });
+          });
+        });
+      }
 
       // Rewind
       if (msg.sdkUserUuid && this.isRewindEligible(messages, msgIndex) && this.actionCallbacks.onRewind) {
@@ -277,6 +323,14 @@ export class MessageRenderer {
       e.preventDefault();
       menu.showAtMouseEvent(e);
     }
+  }
+
+  private findPrecedingUserMessage(messages: ChatMessage[], assistantIndex: number): ChatMessage | null {
+    for (let i = assistantIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user' && messages[i].sdkUserUuid) return messages[i];
+      if (messages[i].role === 'user') break;
+    }
+    return null;
   }
 
   private isRewindEligible(allMessages: ChatMessage[], index: number): boolean {
