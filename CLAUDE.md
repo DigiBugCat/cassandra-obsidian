@@ -121,7 +121,7 @@ Each plugin reload creates new WS connections without fully cleaning up old ones
 RunnerClient reconnect logic creates stale subscriptions. Not critical but adds noise.
 
 ### Runner Docker Image
-- Rebuilt 2026-03-04: CLI 2.1.63, SDK 0.2.63, patches compiled against 2.1.63
+- CLI pinned to 2.1.74 (see `claude-agent-runner/packages/runner/Dockerfile`)
 - Dockerfile at `claude-agent-runner/packages/runner/Dockerfile` — CLI version pinned on lines 5 and 42
 - Token streaming: 2 patches (SDK `sdk.mjs` + CLI `cli-patched.js`) enable `stream_event` in V2
 - Deployed via k3d: `k3d image import claude-runner:latest -c claude-runner`
