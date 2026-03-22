@@ -1,8 +1,8 @@
 # Cassandra — Obsidian AI Chat
 
-> **Disclaimer:** This project is experimental and under active development. It requires a running [Claude Agent Runner](https://github.com/DigiBugCat/claude-agent-runner) backend. Use at your own risk — no stability guarantees.
+> **Disclaimer:** This project is experimental and under active development. It requires a running [Claude Agent Runner](https://github.com/Cassandras-Edge/claude-agent-runner) backend. Use at your own risk — no stability guarantees.
 
-An Obsidian plugin that provides an AI chat interface powered by a [Claude Agent Runner](https://github.com/DigiBugCat/claude-agent-runner) backend. Runner-first, mobile-ready architecture — the vault directory becomes Claude's working directory.
+An Obsidian plugin that provides an AI chat interface powered by a [Claude Agent Runner](https://github.com/Cassandras-Edge/claude-agent-runner) backend. Runner-first, mobile-ready architecture — the vault directory becomes Claude's working directory.
 
 ## Features
 
@@ -16,14 +16,14 @@ An Obsidian plugin that provides an AI chat interface powered by a [Claude Agent
 
 ## Prerequisites
 
-A running [Claude Agent Runner](https://github.com/DigiBugCat/claude-agent-runner) instance. The plugin connects to the runner's HTTP/WebSocket API.
+A running [Claude Agent Runner](https://github.com/Cassandras-Edge/claude-agent-runner) instance. The plugin connects to the runner's HTTP/WebSocket API.
 
 ## Setup
 
 1. Clone into your Obsidian vault's `.obsidian/plugins/` directory:
    ```bash
    cd /path/to/vault/.obsidian/plugins
-   git clone https://github.com/DigiBugCat/cassandra-obsidian.git
+   git clone https://github.com/Cassandras-Edge/cassandra-obsidian.git
    ```
 
 2. Install and build:
